@@ -1,0 +1,11 @@
+*.exe
+*.dll
+*.lps
+
+backup/
+lib/
+bin/
+*.~*
+
+HeaderGen/xml/
+PasOpenGL.pas
