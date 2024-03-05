@@ -166,6 +166,7 @@ public
     procedure SetNode(const Value: TNode);
   public
     property Node: TNode read _Node write SetNode;
+    procedure Setup; virtual;
   end;
   type TAttachmentMesh = class (TAttachment)
   private
@@ -180,6 +181,7 @@ public
     property VertexArrays: TGLuintArray read _VertexArrays;
     constructor Create(const AttachData: TUSceneData.TAttachmentMesh);
     destructor Destroy; override;
+    procedure Setup; override;
   end;
   type TAttachmentSkin = class (TAttachment)
   public
@@ -203,6 +205,7 @@ public
     property Pose: TUMatArray read _Pose;
     constructor Create(const AttachData: TUSceneData.TAttachmentSkin);
     destructor Destroy; override;
+    procedure Setup; override;
     procedure UpdatePose;
   end;
   type TAttachmentList = array of TAttachment;
@@ -233,6 +236,7 @@ public
     const NodeData: TUSceneData.TNodeInterface
   );
   destructor Destroy; override;
+  procedure Setup;
 end;
 type TNodeShared = specialize TUSharedRef<TNode>;
 
@@ -251,8 +255,9 @@ private
   var NodeRemap: specialize TUMap<Pointer, TNode>;
   var AppStartTime: UInt64;
   var LoadDir: String;
+  var TaskLoad: specialize TUTask<TNodeShared>;
   procedure ImageFormatToGL(const ImageFormat: TUImageDataFormat; out Format, DataType: TGLenum);
-  procedure Load(const FileName: String);
+  function TF_Load(const Args: array of const): TNodeShared;
 public
   procedure Initialize; override;
   procedure Finalize; override;
@@ -376,8 +381,8 @@ begin
   ps += 'void main() {'#$D#$A;
   ps += '  out_color = texture(tex0, in_texcoord0.xy);'#$D#$A;
   ps += '}'#$D#$A;
-  UStrToFile('vs' + IntToStr(Hash) + '.txt', vs);
-  UStrToFile('ps' + IntToStr(Hash) + '.txt', ps);
+  //UStrToFile('vs_' + IntToStr(Hash) + '.txt', vs);
+  //UStrToFile('ps_' + IntToStr(Hash) + '.txt', ps);
   Result := TShader.Create(vs, ps);
   _ShaderMap.Add(Hash, Result);
 end;
@@ -689,6 +694,10 @@ begin
   if Assigned(_Node) then _Node.AttachAdd(Self);
 end;
 
+procedure TNode.TAttachment.Setup;
+begin
+end;
+
 constructor TNode.TAttachmentMesh.Create(
   const AttachData: TUSceneData.TAttachmentMesh
 );
@@ -713,6 +722,21 @@ begin
       _Materials[i] := nil;
     end;
   end;
+end;
+
+destructor TNode.TAttachmentMesh.Destroy;
+begin
+  glDeleteVertexArrays(Length(_VertexArrays), @_VertexArrays[0]);
+  inherited Destroy;
+end;
+
+procedure TNode.TAttachmentMesh.Setup;
+  var SubsetId, i: Int32;
+  var Subset: TMesh.TSubset;
+  var AttribOffset: Pointer;
+  var vd: TUVertexDescriptor;
+begin
+  if Length(_VertexArrays) > 0 then Exit;
   SetLength(_VertexArrays, Length(_Mesh.Subsets));
   glGenVertexArrays(Length(_VertexArrays), @_VertexArrays[0]);
   for SubsetId := 0 to High(_Mesh.Subsets) do
@@ -739,12 +763,6 @@ begin
   glBindVertexArray(0);
 end;
 
-destructor TNode.TAttachmentMesh.Destroy;
-begin
-  glDeleteVertexArrays(Length(_VertexArrays), @_VertexArrays[0]);
-  inherited Destroy;
-end;
-
 constructor TNode.TAttachmentSkin.Create(const AttachData: TUSceneData.TAttachmentSkin);
   var SubsetId, i: Int32;
   var MeshSubset: TMesh.TSubset;
@@ -769,6 +787,30 @@ begin
       _Materials[i] := nil;
     end;
   end;
+  SetLength(_Pose, Length(_Skin.Joints));
+  SetLength(_JointBindings, Length(_Skin.Joints));
+  for i := 0 to High(_Pose) do
+  begin
+    _JointBindings[i] := Form1.NodeRemap.FindValueByKey(AttachData.JointBindings[i]);
+  end;
+  UpdatePose;
+end;
+
+destructor TNode.TAttachmentSkin.Destroy;
+begin
+  glDeleteVertexArrays(Length(_VertexArrays), @_VertexArrays[0]);
+  inherited Destroy;
+end;
+
+procedure TNode.TAttachmentSkin.Setup;
+  var SubsetId, i: Int32;
+  var MeshSubset: TMesh.TSubset;
+  var SkinSubset: TSkin.TSubset;
+  var SkinInfo: TShader.TSkinInfo;
+  var AttribOffset: Pointer;
+  var vd: TUVertexDescriptor;
+begin
+  if Length(_VertexArrays) > 0 then Exit;
   SetLength(_VertexArrays, Length(_Skin.Subsets));
   glGenVertexArrays(Length(_VertexArrays), @_VertexArrays[0]);
   for SubsetId := 0 to High(_Skin.Subsets) do
@@ -809,19 +851,6 @@ begin
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, MeshSubset.IndexBuffer);
   end;
   glBindVertexArray(0);
-  SetLength(_Pose, Length(_Skin.Joints));
-  SetLength(_JointBindings, Length(_Skin.Joints));
-  for i := 0 to High(_Pose) do
-  begin
-    _JointBindings[i] := Form1.NodeRemap.FindValueByKey(AttachData.JointBindings[i]);
-  end;
-  UpdatePose;
-end;
-
-destructor TNode.TAttachmentSkin.Destroy;
-begin
-  glDeleteVertexArrays(Length(_VertexArrays), @_VertexArrays[0]);
-  inherited Destroy;
 end;
 
 procedure TNode.TAttachmentSkin.UpdatePose;
@@ -943,6 +972,20 @@ begin
   inherited Destroy;
 end;
 
+procedure TNode.Setup;
+  var Attach: TAttachment;
+  var Node: TNode;
+begin
+  for Attach in _Attachments do
+  begin
+    Attach.Setup;
+  end;
+  for Node in _Children do
+  begin
+    Node.Setup;
+  end;
+end;
+
 procedure TForm1.ImageFormatToGL(const ImageFormat: TUImageDataFormat; out Format, DataType: TGLenum);
 begin
   case ImageFormat of
@@ -959,10 +1002,15 @@ begin
   end;
 end;
 
-procedure TForm1.Load(const FileName: String);
+function TForm1.TF_Load(const Args: array of const): TNodeShared;
   var i: Integer;
   var Scene: TUSceneDataDAE;
+  var FileName: String;
 begin
+  if Length(Args) < 1 then Exit(nil);
+  FileName := AnsiString(Args[0].VAnsiString);
+  if not FileExists(FileName) then Exit(nil);
+  MakeCurrentShared;
   LoadDir := ExtractFileDir(FileName);
   Scene := TUSceneDataDAE.Create([sdo_optimize]);
   try
@@ -991,7 +1039,7 @@ begin
       Materials[i] := TMaterial.Create(Scene.MaterialList[i]);
       MaterialRemap.Add(Scene.MaterialList[i], Materials[i]);
     end;
-    RootNode := TNode.Create(nil, Scene.RootNode);
+    Result := TNode.Create(nil, Scene.RootNode);
     SetLength(Animations, Length(Scene.AnimationList));
     for i := 0 to High(Animations) do
     begin
@@ -1000,12 +1048,15 @@ begin
   finally
     FreeAndNil(Scene);
   end;
+  glFlush();
 end;
 
 procedure TForm1.Initialize;
 begin
   AppStartTime := GetTickCount64;
-  Load(AssetsFile('siren/siren_anim.dae'));
+  TaskLoad := TaskLoad.StartTask(@TF_Load, [AssetsFile('siren/siren_anim.dae')]);
+  Caption := 'PasOpenGL Loading...';
+  //Load(AssetsFile('siren/siren_anim.dae'));
   //Load('../Assets/skin.dae');
   //Load('../Assets/box.dae');
 end;
@@ -1113,8 +1164,14 @@ begin
   if RootNode.IsValid then
   begin
     DrawNode(RootNode.Ptr);
+    glBindVertexArray(0);
+  end
+  else if TaskLoad.IsComplete then
+  begin
+    RootNode := TaskLoad.TaskResult;
+    RootNode.Ptr.Setup;
+    Caption := 'PasOpenGL';
   end;
-  glBindVertexArray(0);
 end;
 
 end.
