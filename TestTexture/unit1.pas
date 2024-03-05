@@ -151,6 +151,7 @@ begin
   UniformTex0 := glGetUniformLocation(Shader, PGLchar(PAnsiChar('tex0')));
   Texture := 0;
   TaskLoadTexture := TaskLoadTexture.StartTask(@TFLoadTexture, [AssetsFile('crate_c.png')]);
+  Caption := 'PasOpenGL Loading...';
 end;
 
 procedure TForm1.Finalize;
@@ -167,6 +168,7 @@ begin
   begin
     Texture := TaskLoadTexture.TaskResult;
     TaskLoadTexture.Reset;
+    Caption := 'PasOpenGL';
   end;
   W := TUMat.RotationY(((GetTickCount64 mod 4000) / 4000) * UTwoPi);
   v := TUMat.View(TUVec3.Make(0, 1.5, -2), TUVec3.Zero, TUVec3.Make(0, 1, 0));

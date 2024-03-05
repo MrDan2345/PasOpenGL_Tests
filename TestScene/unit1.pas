@@ -701,10 +701,7 @@ end;
 constructor TNode.TAttachmentMesh.Create(
   const AttachData: TUSceneData.TAttachmentMesh
 );
-  var SubsetId, i: Int32;
-  var Subset: TMesh.TSubset;
-  var AttribOffset: Pointer;
-  var vd: TUVertexDescriptor;
+  var i: Int32;
 begin
   inherited Create;
   _Mesh := Form1.MeshRemap.FindValueByKey(AttachData.Mesh).Ptr;
@@ -764,12 +761,7 @@ begin
 end;
 
 constructor TNode.TAttachmentSkin.Create(const AttachData: TUSceneData.TAttachmentSkin);
-  var SubsetId, i: Int32;
-  var MeshSubset: TMesh.TSubset;
-  var SkinSubset: TSkin.TSubset;
-  var SkinInfo: TShader.TSkinInfo;
-  var AttribOffset: Pointer;
-  var vd: TUVertexDescriptor;
+  var i: Int32;
 begin
   inherited Create;
   _Skin := Form1.SkinRemap.FindValueByKey(AttachData.Skin).Ptr;
@@ -1169,6 +1161,7 @@ begin
   else if TaskLoad.IsComplete then
   begin
     RootNode := TaskLoad.TaskResult;
+    TaskLoad.Reset;
     RootNode.Ptr.Setup;
     Caption := 'PasOpenGL';
   end;
