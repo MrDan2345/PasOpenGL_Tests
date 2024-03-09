@@ -258,6 +258,8 @@ private
   var TaskLoad: specialize TUTask<TNodeShared>;
   procedure ImageFormatToGL(const ImageFormat: TUImageDataFormat; out Format, DataType: TGLenum);
   function TF_Load(const Args: array of const): TNodeShared;
+protected
+  function RequestDebugContext: Boolean; override;
 public
   procedure Initialize; override;
   procedure Finalize; override;
@@ -1041,6 +1043,11 @@ begin
     FreeAndNil(Scene);
   end;
   glFlush();
+end;
+
+function TForm1.RequestDebugContext: Boolean;
+begin
+  Result := True;
 end;
 
 procedure TForm1.Initialize;

@@ -9,26 +9,28 @@ uses
   Classes, SysUtils, Forms, Controls, Graphics, Dialogs, ExtCtrls, PasOpenGL,
   CommonUtils, MediaUtils, Setup;
 
-type
-  TForm1 = class(TCommonForm)
-  private
-    var VertexArray: TGLuint;
-    var VertexBuffer: TGLuint;
-    var IndexBuffer: TGLuint;
-    var VertexShader: TGLuint;
-    var PixelShader: TGLuint;
-    var UniformWVP: TGLint;
-    var Shader: TGLuint;
-    var Texture: TGLuint;
-    var UniformTex0: TGLint;
-    var TaskLoadTexture: specialize TUTask<TGLuint>;
-    procedure ImageFormatToGL(const ImageFormat: TUImageDataFormat; out Format, DataType: TGLenum);
-    function TFLoadTexture(const Args: array of const): TGLuint;
-  public
-    procedure Initialize; override;
-    procedure Finalize; override;
-    procedure Tick; override;
-  end;
+type TForm1 = class(TCommonForm)
+private
+  var VertexArray: TGLuint;
+  var VertexBuffer: TGLuint;
+  var IndexBuffer: TGLuint;
+  var VertexShader: TGLuint;
+  var PixelShader: TGLuint;
+  var UniformWVP: TGLint;
+  var Shader: TGLuint;
+  var TextureTemp: TGLuint;
+  var Texture: TGLuint;
+  var UniformTex0: TGLint;
+  var TaskLoadTexture: specialize TUTask<TGLuint>;
+  procedure ImageFormatToGL(const ImageFormat: TUImageDataFormat; out Format, DataType: TGLenum);
+  function TF_LoadTexture(const Args: array of const): TGLuint;
+protected
+  function RequestDebugContext: Boolean; override;
+public
+  procedure Initialize; override;
+  procedure Finalize; override;
+  procedure Tick; override;
+end;
 
 var Form1: TForm1;
 
@@ -52,7 +54,7 @@ begin
   end;
 end;
 
-function TForm1.TFLoadTexture(const Args: array of const): TGLuint;
+function TForm1.TF_LoadTexture(const Args: array of const): TGLuint;
   var f: String;
   var Image: TUImageDataShared;
   var TextureFormat, TextureType: TGLenum;
@@ -78,6 +80,11 @@ begin
   glFinish();
 end;
 
+function TForm1.RequestDebugContext: Boolean;
+begin
+  Result := True;
+end;
+
 procedure TForm1.Initialize;
   const Vertices: array[0..3] of packed record
     p: TUVec3;
@@ -91,6 +98,9 @@ procedure TForm1.Initialize;
   );
   const Indices: array[0..5] of TGLubyte = (
     0, 1, 3, 0, 3, 2
+  );
+  const TextureData: array[0..3] of array[0..2] of UInt8 = (
+    (0, 0, 0), ($ff, $ff, $ff), ($ff, $ff, $ff), (0, 0, 0)
   );
   var ShaderSource: String;
   var Ptr: Pointer;
@@ -149,19 +159,37 @@ begin
   glDeleteShader(VertexShader);
   UniformWVP := glGetUniformLocation(Shader, PGLchar(PAnsiChar('WVP')));
   UniformTex0 := glGetUniformLocation(Shader, PGLchar(PAnsiChar('tex0')));
+  glGenTextures(1, @TextureTemp);
+  glBindTexture(GL_TEXTURE_2D, TextureTemp);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+  glTexImage2D(
+    GL_TEXTURE_2D, 0, GL_RGB,
+    2, 2, 0,
+    GL_RGB, GL_UNSIGNED_BYTE,
+    @TextureData
+  );
   Texture := 0;
-  TaskLoadTexture := TaskLoadTexture.StartTask(@TFLoadTexture, [AssetsFile('crate_c.png')]);
+  TaskLoadTexture := TaskLoadTexture.StartTask(@TF_LoadTexture, [AssetsFile('crate_c.png')]);
   Caption := 'PasOpenGL Loading...';
 end;
 
 procedure TForm1.Finalize;
 begin
   if (Texture > 0) then glDeleteTextures(1, @Texture);
+  glDeleteTextures(1, @TextureTemp);
   glDeleteProgram(Shader);
   glDeleteBuffers(1, @VertexBuffer);
 end;
 
 procedure TForm1.Tick;
+  function GetTexture: TGLuint;
+  begin
+    if Texture > 0 then Exit(Texture);
+    Result := TextureTemp;
+  end;
   var W, V, P, WVP: TUMat;
 begin
   if TaskLoadTexture.IsComplete then
@@ -174,7 +202,6 @@ begin
   v := TUMat.View(TUVec3.Make(0, 1.5, -2), TUVec3.Zero, TUVec3.Make(0, 1, 0));
   P := TUMat.Proj(UPi * 0.5, ClientWidth / ClientHeight, 0.1, 100);
   WVP := W * V * P;
-
   glViewport(0, 0, ClientWidth, ClientHeight);
   glClearColor(0.4, 1, 0.8, 1);
   //glClearDepth(1);
@@ -182,14 +209,10 @@ begin
   glBindVertexArray(VertexArray);
   glUseProgram(Shader);
   glUniformMatrix4fv(UniformWVP, 1, GL_TRUE, @WVP);
-  if (Texture > 0) then
-  begin
-    glActiveTexture(GL_TEXTURE0);
-    glBindTexture(GL_TEXTURE_2D, Texture);
-    glUniform1i(UniformTex0, 0);
-  end;
+  glActiveTexture(GL_TEXTURE0);
+  glBindTexture(GL_TEXTURE_2D, GetTexture);
+  glUniform1i(UniformTex0, 0);
   glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_BYTE, nil);
-  //glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
 end;
 
 end.

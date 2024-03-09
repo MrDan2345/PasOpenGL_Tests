@@ -25,6 +25,8 @@ private
   var Drawer: TIntfFreeTypeDrawer;
   var FontTexture: TGLuint;
   var TextureSize: TUVec2i;
+protected
+  function RequestDebugContext: Boolean; override;
 public
   procedure InitializeFont;
   procedure FinalizeFont;
@@ -38,6 +40,11 @@ var Form1: TForm1;
 implementation
 
 {$R *.lfm}
+
+function TForm1.RequestDebugContext: Boolean;
+begin
+  Result := True;
+end;
 
 procedure TForm1.InitializeFont;
   var FontFamilyName: String;

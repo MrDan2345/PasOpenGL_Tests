@@ -19,6 +19,8 @@ private
   var UniformWVP: TGLint;
   var Shader: TGLuint;
   var IndexCount: UInt32;
+protected
+  function RequestDebugContext: Boolean; override;
 public
   procedure Initialize; override;
   procedure Finalize; override;
@@ -30,6 +32,11 @@ var Form1: TForm1;
 implementation
 
 {$R *.lfm}
+
+function TForm1.RequestDebugContext: Boolean;
+begin
+  Result := True;
+end;
 
 procedure TForm1.Initialize;
   var Positions: array of TUVec3;
