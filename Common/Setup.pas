@@ -5,7 +5,8 @@ interface
 {$macro on}
 
 uses
-  Classes, SysUtils, Forms, Controls, Graphics, Dialogs, ExtCtrls, PasOpenGL,
+  Classes, SysUtils, Forms, Controls,
+  Graphics, Dialogs, ExtCtrls, PasOpenGL,
 {$if defined(WINDOWS)}
   Windows,
 {$elseif defined(LINUX)}
@@ -276,33 +277,23 @@ end;
 {$endif}
 
 procedure TCommonForm.DumpCallStack;
-  var I: Longint;
-  var prevbp: Pointer;
-  var CallerFrame: Pointer;
+  var CurFrame, PrevFrame: Pointer;
   var CallerAddress: Pointer;
-  var bp: Pointer;
-  var Report: string;
+  var CurDepth: UInt32;
   const MaxDepth = 20;
 begin
-  Report := '';
-  bp := glDebugFrame;
-  try
-    prevbp := bp - 1;
-    I := 0;
-    while bp > prevbp do
-    begin
-      CallerAddress := get_caller_addr(bp);
-      CallerFrame := get_caller_frame(bp);
-      if (CallerAddress = nil) then Break;
-      Report := Report + BackTraceStrFunc(CallerAddress) + LineEnding;
-      Inc(I);
-      if (I >= MaxDepth) or (CallerFrame = nil) then Break;
-      prevbp := bp;
-      bp := CallerFrame;
-    end;
-  except
-  end;
-  WriteLn(Report);
+  CurDepth := 0;
+  CurFrame := glDebugFrame;
+  repeat
+     CallerAddress := get_caller_addr(CurFrame);
+     PrevFrame := CurFrame;
+     CurFrame := get_caller_frame(CurFrame);
+     if CurFrame <= PrevFrame then Break;
+     if not Assigned(CallerAddress) then Break;
+     WriteLn(BackTraceStrFunc(CallerAddress));
+     Inc(CurDepth);
+     if CurDepth >= MaxDepth then Break;
+  until not Assigned(CurFrame);
 end;
 
 function TCommonForm.RequestDebugContext: Boolean;

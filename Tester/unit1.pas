@@ -106,7 +106,7 @@ begin
   glBindVertexArray(0);
   UniformWVP := glGetUniformLocation(Shader, PGLchar(PAnsiChar('WVP')));
   //check for gl error handling
-  //glGenBuffers(-1, nil);
+  glGenBuffers(-1, nil);
 end;
 
 procedure TForm1.Finalize;
