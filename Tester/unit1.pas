@@ -18,6 +18,8 @@ private
   var PixelShader: TGLuint;
   var UniformWVP: TGLint;
   var Shader: TGLuint;
+protected
+  function RequestDebugContext: Boolean; override;
 public
   procedure Initialize; override;
   procedure Finalize; override;
@@ -29,6 +31,11 @@ var Form1: TForm1;
 implementation
 
 {$R *.lfm}
+
+function TForm1.RequestDebugContext: Boolean;
+begin
+  Result := True;
+end;
 
 procedure TForm1.Initialize;
   const Vertices: array[0..3] of packed record
@@ -48,6 +55,7 @@ procedure TForm1.Initialize;
   var i: Integer;
   var ErrorBuffer: array[0..511] of AnsiChar;
 begin
+  WriteLn('Debug Context = ', IsDebugContext);
   glGenVertexArrays(1, @VertexArray);
   glGenBuffers(1, @VertexBuffer);
   glGenBuffers(1, @IndexBuffer);
@@ -97,6 +105,8 @@ begin
   glBindBuffer(GL_ARRAY_BUFFER, 0);
   glBindVertexArray(0);
   UniformWVP := glGetUniformLocation(Shader, PGLchar(PAnsiChar('WVP')));
+  //check for gl error handling
+  //glGenBuffers(-1, nil);
 end;
 
 procedure TForm1.Finalize;

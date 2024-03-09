@@ -2,6 +2,8 @@ unit Setup;
 
 interface
 
+{$macro on}
+
 uses
   Classes, SysUtils, Forms, Controls, Graphics, Dialogs, ExtCtrls, PasOpenGL,
 {$if defined(WINDOWS)}
@@ -11,6 +13,12 @@ uses
   gdk2x, gtk2,
 {$endif}
   CommonUtils;
+
+{$if defined(WINDOWS)}
+  {$define calldecl := stdcall}
+{$else}
+  {$define calldecl := cdecl}
+{$endif}
 
 type TCommonForm = class(TForm)
   procedure FormActivate(Sender: TObject);
@@ -33,7 +41,16 @@ private
   procedure LinuxInitializeOpenGL;
   procedure LinuxFinalizeOpenGL;
 {$endif}
+  procedure DumpCallStack;
+protected
+  function RequestDebugContext: Boolean; virtual;
+  procedure DebugMessage(
+    const MsgSource, MsgType, MsgSeverity: GLenum;
+    const MsgId: UInt32; const MsgStr: String;
+    const SourceStr, TypeStr, SeverityStr: String
+  ); virtual;
 public
+  function IsDebugContext: Boolean;
   procedure InitializeOpenGL;
   procedure FinalizeOpenGL;
   procedure PrintInfo;
@@ -50,11 +67,64 @@ end;
 
 implementation
 
+procedure DebugOutout(
+  source: GLenum;
+  _type: GLenum;
+  id: GLuint;
+  severity: GLenum;
+  length: GLsizei;
+  const _message: PGLchar;
+  const userParam: Pointer
+); calldecl;
+  var SourceStr, TypeStr, SeverityStr, MsgStr: String;
+begin
+  case source of
+    GL_DEBUG_SOURCE_API: SourceStr := 'API';
+    GL_DEBUG_SOURCE_WINDOW_SYSTEM: SourceStr := 'Window System';
+    GL_DEBUG_SOURCE_SHADER_COMPILER: SourceStr := 'Shader Compiler';
+    GL_DEBUG_SOURCE_THIRD_PARTY: SourceStr := 'Third Party';
+    GL_DEBUG_SOURCE_APPLICATION: SourceStr := 'Application';
+    GL_DEBUG_SOURCE_OTHER: SourceStr := 'Other';
+  end;
+  case _type of
+    GL_DEBUG_TYPE_ERROR: TypeStr := 'Error';
+    GL_DEBUG_TYPE_DEPRECATED_BEHAVIOR: TypeStr := 'Deprecated Behaviour';
+    GL_DEBUG_TYPE_UNDEFINED_BEHAVIOR: TypeStr := 'Undefined Behaviour';
+    GL_DEBUG_TYPE_PORTABILITY: TypeStr := 'Portability';
+    GL_DEBUG_TYPE_PERFORMANCE: TypeStr := 'Performance';
+    GL_DEBUG_TYPE_MARKER: TypeStr := 'Marker';
+    GL_DEBUG_TYPE_PUSH_GROUP: TypeStr := 'Push Group';
+    GL_DEBUG_TYPE_POP_GROUP: TypeStr := 'Pop Group';
+    GL_DEBUG_TYPE_OTHER: TypeStr := 'Other';
+  end;
+  case severity of
+    GL_DEBUG_SEVERITY_HIGH: SeverityStr := 'High';
+    GL_DEBUG_SEVERITY_MEDIUM: SeverityStr := 'Medium';
+    GL_DEBUG_SEVERITY_LOW: SeverityStr := 'Low';
+    GL_DEBUG_SEVERITY_NOTIFICATION: SeverityStr := 'Notification';
+  end;
+  MsgStr := '';
+  SetLength(MsgStr, length);
+  Move(_message^, MsgStr[1], length);
+  TCommonForm(userParam).DebugMessage(
+    source, _type, severity, id, MsgStr,
+    SourceStr, TypeStr, SeverityStr
+  );
+end;
+
 procedure TCommonForm.FormActivate(Sender: TObject);
 begin
   if Timer.Enabled then Exit;;
   InitializeOpenGL;
   PrintInfo;
+  if IsDebugContext then
+  begin
+    glEnable(GL_DEBUG_OUTPUT);
+    glEnable(GL_DEBUG_OUTPUT_SYNCHRONOUS);
+    glDebugMessageCallback(@DebugOutout, Self);
+    glDebugMessageControl(GL_DONT_CARE, GL_DONT_CARE, GL_DONT_CARE, 0, nil, GL_TRUE);
+    glSetDebugMode(True);
+  end;
   Initialize;
   Timer.Enabled := True;
 end;
@@ -117,7 +187,10 @@ begin
   SetPixelFormat(DeviceContext, pf, @pfd);
   ContextAttribs[WGL_CONTEXT_MAJOR_VERSION_ARB] := 4;
   ContextAttribs[WGL_CONTEXT_MINOR_VERSION_ARB] := 5;
-  //ContextAttribs[WGL_CONTEXT_FLAGS_ARB] := GL_CONTEXT_FLAG_DEBUG_BIT;
+  if RequestDebugContext then
+  begin
+    ContextAttribs[WGL_CONTEXT_FLAGS_ARB] := WGL_CONTEXT_DEBUG_BIT_ARB;
+  end;
   //ContextAttribs[WGL_CONTEXT_PROFILE_MASK_ARB] := WGL_CONTEXT_COMPATIBILITY_PROFILE_BIT_ARB;
   //ContextAttribs[WGL_CONTEXT_PROFILE_MASK_ARB] := WGL_CONTEXT_FORWARD_COMPATIBLE_BIT_ARB;
   ContextAttribs[WGL_CONTEXT_PROFILE_MASK_ARB] := WGL_CONTEXT_CORE_PROFILE_BIT_ARB;
@@ -182,7 +255,10 @@ begin
   //glXGetFBConfigAttrib
   ContextAttribs[GLX_CONTEXT_MAJOR_VERSION_ARB] := 4;
   ContextAttribs[GLX_CONTEXT_MINOR_VERSION_ARB] := 5;
-  //ContextAttribs[GLX_CONTEXT_FLAGS_ARB] := GL_CONTEXT_FLAG_DEBUG_BIT;
+  if RequestDebugContext then
+  begin
+    ContextAttribs[GLX_CONTEXT_FLAGS_ARB] := GLX_CONTEXT_DEBUG_BIT_ARB;
+  end;
   //ContextAttribs[GLX_CONTEXT_PROFILE_MASK_ARB] := GLX_CONTEXT_COMPATIBILITY_PROFILE_BIT_ARB;
   //ContextAttribs[GLX_CONTEXT_PROFILE_MASK_ARB] := GLX_CONTEXT_FORWARD_COMPATIBLE_BIT_ARB;
   ContextAttribs[GLX_CONTEXT_PROFILE_MASK_ARB] := GLX_CONTEXT_CORE_PROFILE_BIT_ARB;
@@ -198,6 +274,71 @@ begin
   XCloseDisplay(Display);
 end;
 {$endif}
+
+procedure TCommonForm.DumpCallStack;
+  var I: Longint;
+  var prevbp: Pointer;
+  var CallerFrame: Pointer;
+  var CallerAddress: Pointer;
+  var bp: Pointer;
+  var Report: string;
+  const MaxDepth = 20;
+begin
+  Report := '';
+  bp := glDebugFrame;
+  try
+    prevbp := bp - 1;
+    I := 0;
+    while bp > prevbp do
+    begin
+      CallerAddress := get_caller_addr(bp);
+      CallerFrame := get_caller_frame(bp);
+      if (CallerAddress = nil) then Break;
+      Report := Report + BackTraceStrFunc(CallerAddress) + LineEnding;
+      Inc(I);
+      if (I >= MaxDepth) or (CallerFrame = nil) then Break;
+      prevbp := bp;
+      bp := CallerFrame;
+    end;
+  except
+  end;
+  WriteLn(Report);
+end;
+
+function TCommonForm.RequestDebugContext: Boolean;
+begin
+  Result := False;
+end;
+
+procedure TCommonForm.DebugMessage(
+  const MsgSource, MsgType, MsgSeverity: GLenum;
+  const MsgId: UInt32; const MsgStr: String;
+  const SourceStr, TypeStr, SeverityStr: String
+);
+  const MessagesToIgnore: array of UInt32 = (
+    $00020071 // GL_STATIC_DRAW uses video memory
+  );
+  var MessageToIgnore: UInt32;
+begin
+  // ignore insignificant notifications
+  for MessageToIgnore in MessagesToIgnore do
+  if MsgId = MessageToIgnore then Exit;
+  WriteLn('Debug Message (Source: ', SourceStr, '; Type: ', TypeStr, '; Severity: ', SeverityStr, '):');
+  WriteLn('Id = ', IntToHex(MsgId));
+  WriteLn('Message = ', MsgStr);
+  if MsgType = GL_DEBUG_TYPE_ERROR then
+  begin
+    DumpCallStack;
+    RunError;
+  end;
+end;
+
+function TCommonForm.IsDebugContext: Boolean;
+  var Flags: Int32;
+begin
+  glGetIntegerv(GL_CONTEXT_FLAGS, @Flags);
+  Result := Flags and GL_CONTEXT_FLAG_DEBUG_BIT > 0;
+end;
 
 procedure TCommonForm.InitializeOpenGL;
 begin

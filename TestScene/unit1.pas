@@ -303,7 +303,7 @@ begin
   Hash := MakeHash;
   Result := _ShaderMap.FindValueByKey(Hash);
   if Assigned(Result) then Exit;
-  vs := '#version 430 core'#$D#$A;
+  vs := '#version 450 core'#$D#$A;
   Inputs := '';
   Outputs := '';
   AttribIndex := 0;
