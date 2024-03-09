@@ -320,7 +320,8 @@ begin
   if MsgType = GL_DEBUG_TYPE_ERROR then
   begin
     DumpCallStack;
-    RunError;
+    // raise am exception at the point of gl function call
+    raise Exception.Create(MsgStr) at get_caller_addr(glDebugFrame), get_caller_frame(glDebugFrame);
   end;
 end;
 

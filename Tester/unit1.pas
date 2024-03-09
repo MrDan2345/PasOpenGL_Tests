@@ -105,7 +105,7 @@ begin
   glBindBuffer(GL_ARRAY_BUFFER, 0);
   glBindVertexArray(0);
   UniformWVP := glGetUniformLocation(Shader, PGLchar(PAnsiChar('WVP')));
-  //check for gl error handling
+  //check gl error handling
   //glGenBuffers(-1, nil);
 end;
 
