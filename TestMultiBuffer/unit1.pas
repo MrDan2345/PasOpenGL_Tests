@@ -140,10 +140,28 @@ procedure TForm1.Initialize;
   var i: Integer;
   var ErrorBuffer: array[0..511] of AnsiChar;
 begin
+  //{ DSA
+  GenerateBuffers;
+  glCreateVertexArrays(1, @VertexArray);
+  glCreateBuffers(Length(VertexBuffer), @VertexBuffer);
+  glNamedBufferStorage(VertexBuffer[0], SizeOf(Positions[0]) * Length(Positions), @Positions[0], 0);
+  glNamedBufferStorage(VertexBuffer[1], SizeOf(Colors[0]) * Length(Colors), @Colors[0], 0);
+  glCreateBuffers(1, @IndexBuffer);
+  glNamedBufferStorage(IndexBuffer, SizeOf(UInt32) * Length(Indices), @Indices[0], 0);
+  glVertexArrayVertexBuffer(VertexArray, 0, VertexBuffer[0], 0, SizeOf(Positions[0]));
+  glVertexArrayVertexBuffer(VertexArray, 1, VertexBuffer[1], 0, SizeOf(Colors[0]));
+  glVertexArrayElementBuffer(VertexArray, IndexBuffer);
+  glEnableVertexArrayAttrib(VertexArray, 0);
+  glVertexArrayAttribFormat(VertexArray, 0, 3, GL_FLOAT, GL_FALSE, 0);
+  glVertexArrayAttribBinding(VertexArray, 0, 0);
+  glEnableVertexArrayAttrib(VertexArray, 1);
+  glVertexArrayAttribFormat(VertexArray, 1, 4, GL_FLOAT, GL_FALSE, 0);
+  glVertexArrayAttribBinding(VertexArray, 1, 1);
+  //}
+  { pre DSA
   glGenVertexArrays(1, @VertexArray);
   glGenBuffers(Length(VertexBuffer), @VertexBuffer);
   glGenBuffers(1, @IndexBuffer);
-  GenerateBuffers;
   glBindVertexArray(VertexArray);
   glBindBuffer(GL_ARRAY_BUFFER, VertexBuffer[0]);
   glBufferData(GL_ARRAY_BUFFER, SizeOf(TUVec3) * Length(Positions), @Positions[0], GL_STATIC_DRAW);
@@ -155,6 +173,7 @@ begin
   glEnableVertexAttribArray(1);
   glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, IndexBuffer);
   glBufferData(GL_ELEMENT_ARRAY_BUFFER, SizeOf(UInt32) * Length(Indices), @Indices[0], GL_STATIC_DRAW);
+  //}
   VertexShader := glCreateShader(GL_VERTEX_SHADER);
   ShaderSource := UFileToStr(LocalFile('shader_vs.txt'));
   Ptr := PAnsiChar(ShaderSource);

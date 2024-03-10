@@ -7,7 +7,7 @@ interface
 
 uses
   Classes, SysUtils, Forms, Controls, Graphics, Dialogs, ExtCtrls, PasOpenGL,
-  CommonUtils, MediaUtils, Setup;
+  CommonUtils, MediaUtils, Setup, Math;
 
 type TGLuintArray = array of TGLuint;
 type TNode = class;
@@ -464,6 +464,19 @@ begin
   begin
     IndexFormat := GL_UNSIGNED_SHORT;
   end;
+  //{ DSA
+  glCreateBuffers(1, @VertexBuffer);
+  glNamedBufferStorage(
+    VertexBuffer, VertexCount * VertexSize,
+    MeshSubset.VertexData, 0
+  );
+  glCreateBuffers(1, @IndexBuffer);
+  glNamedBufferStorage(
+    IndexBuffer, IndexCount * IndexSize,
+    MeshSubset.IndexData, 0
+  );
+  //}
+  { pre DSA
   glGenBuffers(1, @VertexBuffer);
   glBindBuffer(GL_ARRAY_BUFFER, VertexBuffer);
   glBufferData(GL_ARRAY_BUFFER, VertexCount * VertexSize, MeshSubset.VertexData, GL_STATIC_DRAW);
@@ -472,6 +485,7 @@ begin
   glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, IndexBuffer);
   glBufferData(GL_ELEMENT_ARRAY_BUFFER, IndexCount * IndexSize, MeshSubset.IndexData, GL_STATIC_DRAW);
   glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+  //}
 end;
 
 destructor TMesh.TSubset.Destroy;
@@ -516,10 +530,19 @@ begin
   VertexCount := MeshSubset.VertexCount;
   VertexSize := SkinSubset.VertexSize;
   WeightCount := SkinSubset.WeightCount;
+  //{ DSA
+  glCreateBuffers(1, @VertexBuffer);
+  glNamedBufferStorage(
+    VertexBuffer, VertexCount * VertexSize,
+    SkinSubset.VertexData, 0
+  );
+  //}
+  { pre DSA
   glGenBuffers(1, @VertexBuffer);
   glBindBuffer(GL_ARRAY_BUFFER, VertexBuffer);
   glBufferData(GL_ARRAY_BUFFER, VertexCount * VertexSize, SkinSubset.VertexData, GL_STATIC_DRAW);
   glBindBuffer(GL_ARRAY_BUFFER, 0);
+  //}
 end;
 
 destructor TSkin.TSubset.Destroy;
@@ -558,6 +581,7 @@ end;
 constructor TTexture.Create(const ImageData: TUSceneData.TImageInterface);
   var Image: TUImageDataShared;
   var TextureFormat, TextureType: TGLenum;
+  var MipLevels: UInt32;
 begin
   //Image := ULoadImageData('../Assets/siren/' + ImageData.FileName);
   //Image := ULoadImageData('../Assets/' + ImageData.FileName);
@@ -567,7 +591,25 @@ begin
     _Handle := 0;
     Exit;
   end;
+  MipLevels := Round(Math.Log2(UMax(Image.Ptr.Width, Image.Ptr.Height)));
   Form1.ImageFormatToGL(Image.Ptr.Format, TextureFormat, TextureType);
+  //{ DSA
+  glCreateTextures(GL_TEXTURE_2D, 1, @_Handle);
+  glTextureParameteri(_Handle, GL_TEXTURE_WRAP_S, GL_REPEAT);
+  glTextureParameteri(_Handle, GL_TEXTURE_WRAP_T, GL_REPEAT);
+  glTextureParameteri(_Handle, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+  glTextureParameteri(_Handle, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+  glTextureStorage2D(
+    _Handle, MipLevels, GL_RGBA8,
+    Image.Ptr.Width, Image.Ptr.Height
+  );
+  glTextureSubImage2D(
+    _Handle, 0, 0, 0, Image.Ptr.Width, Image.Ptr.Height,
+    TextureFormat, TextureType, Image.Ptr.Data
+  );
+  glGenerateTextureMipmap(_Handle);
+  //}
+  { pre DSA
   glGenTextures(1, @_Handle);
   glBindTexture(GL_TEXTURE_2D, _Handle);
   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
@@ -581,6 +623,7 @@ begin
   );
   glGenerateMipmap(GL_TEXTURE_2D);
   glBindTexture(GL_TEXTURE_2D, 0);
+  //}
 end;
 
 destructor TTexture.Destroy;
@@ -732,32 +775,52 @@ end;
 procedure TNode.TAttachmentMesh.Setup;
   var SubsetId, i: Int32;
   var Subset: TMesh.TSubset;
-  var AttribOffset: Pointer;
+  var AttribOffset: GLuint;
+  //var AttribOffset: Pointer;
   var vd: TUVertexDescriptor;
+  var VertexArray: TGLuint;
 begin
   if Length(_VertexArrays) > 0 then Exit;
   SetLength(_VertexArrays, Length(_Mesh.Subsets));
-  glGenVertexArrays(Length(_VertexArrays), @_VertexArrays[0]);
+  glCreateVertexArrays(Length(_VertexArrays), @_VertexArrays[0]);
+  //glGenVertexArrays(Length(_VertexArrays), @_VertexArrays[0]);
   for SubsetId := 0 to High(_Mesh.Subsets) do
   begin
+    VertexArray := _VertexArrays[SubsetId];
     Subset := _Mesh.Subsets[SubsetId];
     vd := Subset.VertexDescriptor;
     specialize UArrAppend<TShaderShared>(
       _Shaders, TShader.AutoShader(vd)
     );
-    glBindVertexArray(_VertexArrays[SubsetId]);
-    glBindBuffer(GL_ARRAY_BUFFER, Subset.VertexBuffer);
-    AttribOffset := nil;
+    glVertexArrayVertexBuffer(
+      VertexArray,
+      0, Subset.VertexBuffer,
+      0, Subset.VertexSize
+    );
+    //glBindVertexArray(_VertexArrays[SubsetId]);
+    //glBindBuffer(GL_ARRAY_BUFFER, Subset.VertexBuffer);
+    //AttribOffset := nil;
+    AttribOffset := 0;
     for i := 0 to High(vd) do
     begin
-      glVertexAttribPointer(
-        i, vd[i].DataCount, GL_FLOAT, GL_FALSE,
-        Subset.VertexSize, AttribOffset
+      glEnableVertexArrayAttrib(VertexArray, i);
+      glVertexArrayAttribFormat(
+        VertexArray, i, vd[i].DataCount,
+        GL_FLOAT, GL_FALSE, AttribOffset
       );
-      glEnableVertexAttribArray(i);
+      glVertexArrayAttribBinding(VertexArray, i, 0);
+      //glVertexAttribPointer(
+      //  i, vd[i].DataCount, GL_FLOAT, GL_FALSE,
+      //  Subset.VertexSize, AttribOffset
+      //);
+      //glEnableVertexAttribArray(i);
       AttribOffset += vd[i].Size;
     end;
-    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, Subset.IndexBuffer);
+    glVertexArrayElementBuffer(
+      VertexArray,
+      Subset.IndexBuffer
+    );
+    //glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, Subset.IndexBuffer);
   end;
   glBindVertexArray(0);
 end;
@@ -801,48 +864,85 @@ procedure TNode.TAttachmentSkin.Setup;
   var MeshSubset: TMesh.TSubset;
   var SkinSubset: TSkin.TSubset;
   var SkinInfo: TShader.TSkinInfo;
-  var AttribOffset: Pointer;
+  //var AttribOffset: Pointer;
+  var AttribOffset: GLuint;
   var vd: TUVertexDescriptor;
+  var VertexArray: TGLuint;
 begin
   if Length(_VertexArrays) > 0 then Exit;
   SetLength(_VertexArrays, Length(_Skin.Subsets));
-  glGenVertexArrays(Length(_VertexArrays), @_VertexArrays[0]);
+  glCreateVertexArrays(Length(_VertexArrays), @_VertexArrays[0]);
+  //glGenVertexArrays(Length(_VertexArrays), @_VertexArrays[0]);
   for SubsetId := 0 to High(_Skin.Subsets) do
   begin
     SkinSubset := _Skin.Subsets[SubsetId];
     MeshSubset := _Skin.Mesh.Subsets[SubsetId];
+    VertexArray := _VertexArrays[SubsetId];
     vd := MeshSubset.VertexDescriptor;
     SkinInfo.BoneWeights := SkinSubset.WeightCount;
     specialize UArrAppend<TShaderShared>(
       _Shaders, TShader.AutoShader(vd, @SkinInfo)
     );
-    glBindVertexArray(_VertexArrays[SubsetId]);
-    glBindBuffer(GL_ARRAY_BUFFER, MeshSubset.VertexBuffer);
-    AttribOffset := nil;
+    glVertexArrayVertexBuffer(
+      VertexArray,
+      0, MeshSubset.VertexBuffer,
+      0, MeshSubset.VertexSize
+    );
+    //glBindVertexArray(_VertexArrays[SubsetId]);
+    //glBindBuffer(GL_ARRAY_BUFFER, MeshSubset.VertexBuffer);
+    AttribOffset := 0;
+    //AttribOffset := nil;
     for i := 0 to High(vd) do
     begin
-      glVertexAttribPointer(
-        i, vd[i].DataCount, GL_FLOAT, GL_FALSE,
-        MeshSubset.VertexSize, AttribOffset
+      glEnableVertexArrayAttrib(VertexArray, i);
+      glVertexArrayAttribFormat(
+        VertexArray, i, vd[i].DataCount,
+        GL_FLOAT, GL_FALSE, AttribOffset
       );
-      glEnableVertexAttribArray(i);
+      glVertexArrayAttribBinding(VertexArray, i, 0);
+      //glVertexAttribPointer(
+      //  i, vd[i].DataCount, GL_FLOAT, GL_FALSE,
+      //  MeshSubset.VertexSize, AttribOffset
+      //);
+      //glEnableVertexAttribArray(i);
       AttribOffset += vd[i].Size;
     end;
-    glBindBuffer(GL_ARRAY_BUFFER, SkinSubset.VertexBuffer);
-    AttribOffset := nil;
+    glVertexArrayVertexBuffer(
+      VertexArray,
+      1, SkinSubset.VertexBuffer,
+      0, SkinSubset.VertexSize
+    );
+    //glBindBuffer(GL_ARRAY_BUFFER, SkinSubset.VertexBuffer);
+    //AttribOffset := nil;
+    AttribOffset := 0;
     i := Length(vd);
-    glVertexAttribIPointer(
-      i, SkinInfo.BoneWeights, GL_UNSIGNED_INT,
-      SkinSubset.VertexSize, AttribOffset
+    glEnableVertexArrayAttrib(VertexArray, i);
+    glVertexArrayAttribIFormat(
+      VertexArray, i, SkinInfo.BoneWeights,
+      GL_UNSIGNED_INT, AttribOffset
     );
-    glEnableVertexAttribArray(i); Inc(i);
+    glVertexArrayAttribBinding(VertexArray, i, 1);
+    Inc(i);
     AttribOffset += SkinInfo.BoneWeights * SizeOf(UInt32);
-    glVertexAttribPointer(
-      i, SkinInfo.BoneWeights, GL_FLOAT, GL_FALSE,
-      SkinSubset.VertexSize, AttribOffset
+    glEnableVertexArrayAttrib(VertexArray, i);
+    glVertexArrayAttribFormat(
+      VertexArray, i, SkinInfo.BoneWeights,
+      GL_FLOAT, GL_FALSE, AttribOffset
     );
-    glEnableVertexAttribArray(i);
-    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, MeshSubset.IndexBuffer);
+    glVertexArrayAttribBinding(VertexArray, i, 1);
+    //glVertexAttribIPointer(
+    //  i, SkinInfo.BoneWeights, GL_UNSIGNED_INT,
+    //  SkinSubset.VertexSize, AttribOffset
+    //);
+    //glEnableVertexAttribArray(i); Inc(i);
+    //AttribOffset += SkinInfo.BoneWeights * SizeOf(UInt32);
+    //glVertexAttribPointer(
+    //  i, SkinInfo.BoneWeights, GL_FLOAT, GL_FALSE,
+    //  SkinSubset.VertexSize, AttribOffset
+    //);
+    //glEnableVertexAttribArray(i);
+    glVertexArrayElementBuffer(VertexArray, MeshSubset.IndexBuffer);
+    //glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, MeshSubset.IndexBuffer);
   end;
   glBindVertexArray(0);
 end;
@@ -1099,8 +1199,9 @@ procedure TForm1.Tick;
         NewBuffer := AttachMesh.VertexArrays[i];
         glBindVertexArray(NewBuffer);
         NewTexture := AttachMesh.Materials[i].Texture.Ptr.Handle;
-        glActiveTexture(GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_2D, NewTexture);
+        glBindTextureUnit(0, NewTexture);
+        //glActiveTexture(GL_TEXTURE0);
+        //glBindTexture(GL_TEXTURE_2D, NewTexture);
         glUniform1i(NewShader.UniformTex0, 0);
         glUniformMatrix4fv(NewShader.UniformWVP, 1, GL_TRUE, @WVP);
         AttachMesh.Mesh.DrawSubset(i);
@@ -1119,8 +1220,9 @@ procedure TForm1.Tick;
         NewBuffer := AttachSkin.VertexArrays[i];
         glBindVertexArray(NewBuffer);
         NewTexture := AttachSkin.Materials[i].Texture.Ptr.Handle;
-        glActiveTexture(GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_2D, NewTexture);
+        glBindTextureUnit(0, NewTexture);
+        //glActiveTexture(GL_TEXTURE0);
+        //glBindTexture(GL_TEXTURE_2D, NewTexture);
         glUniform1i(NewShader.UniformTex0, 0);
         glUniformMatrix4fv(NewShader.UniformWVP, 1, GL_TRUE, @WVP);
         glUniformMatrix4fv(NewShader.UniformBone, Length(AttachSkin.Pose), GL_TRUE, @AttachSkin.Pose[0]);
