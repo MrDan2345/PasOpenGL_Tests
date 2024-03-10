@@ -7,7 +7,7 @@ interface
 
 uses
   Classes, SysUtils, Forms, Controls, Graphics, Dialogs, ExtCtrls, PasOpenGL,
-  CommonUtils, MediaUtils, Setup;
+  CommonUtils, MediaUtils, Setup, Math;
 
 type TForm1 = class(TCommonForm)
 private
@@ -58,25 +58,40 @@ function TForm1.TF_LoadTexture(const Args: array of const): TGLuint;
   var f: String;
   var Image: TUImageDataShared;
   var TextureFormat, TextureType: TGLenum;
+  var MipLevels: UInt32;
 begin
   if Length(Args) < 1 then Exit(0);
   f := AnsiString(Args[0].VAnsiString);
   Image := ULoadImageData(f);
   if not Image.IsValid then Exit(0);
+  MipLevels := Round(Math.Log2(UMax(Image.Ptr.Width, Image.Ptr.Height)));
   MakeCurrentShared;
   ImageFormatToGL(Image.Ptr.Format, TextureFormat, TextureType);
-  glGenTextures(1, @Result);
-  glBindTexture(GL_TEXTURE_2D, Result);
-  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
-  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
-  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
-  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-  glTexImage2D(
-    GL_TEXTURE_2D, 0, GL_RGB,
-    Image.Ptr.Width, Image.Ptr.Height, 0,
+  glCreateTextures(GL_TEXTURE_2D, 1, @Result);
+  glTextureParameteri(Result, GL_TEXTURE_WRAP_S, GL_REPEAT);
+  glTextureParameteri(Result, GL_TEXTURE_WRAP_T, GL_REPEAT);
+  glTextureParameteri(Result, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+  glTextureParameteri(Result, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+  glTextureStorage2D(Result, MipLevels, GL_RGB8, Image.Ptr.Width, Image.Ptr.Height);
+  glTextureSubImage2D(
+    Result, 0, 0, 0,
+    Image.Ptr.Width, Image.Ptr.Width,
     TextureFormat, TextureType, Image.Ptr.Data
   );
-  glGenerateMipmap(GL_TEXTURE_2D);
+  glGenerateTextureMipmap(Result);
+  // old style texture creation requires binding to context
+  //glGenTextures(1, @Result);
+  //glBindTexture(GL_TEXTURE_2D, Result);
+  //glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+  //glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+  //glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+  //glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+  //glTexImage2D(
+  //  GL_TEXTURE_2D, 0, GL_RGB,
+  //  Image.Ptr.Width, Image.Ptr.Height, 0,
+  //  TextureFormat, TextureType, Image.Ptr.Data
+  //);
+  //glGenerateMipmap(GL_TEXTURE_2D);
   glFinish();
 end;
 
@@ -159,18 +174,29 @@ begin
   glDeleteShader(VertexShader);
   UniformWVP := glGetUniformLocation(Shader, PGLchar(PAnsiChar('WVP')));
   UniformTex0 := glGetUniformLocation(Shader, PGLchar(PAnsiChar('tex0')));
-  glGenTextures(1, @TextureTemp);
-  glBindTexture(GL_TEXTURE_2D, TextureTemp);
-  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
-  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
-  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-  glTexImage2D(
-    GL_TEXTURE_2D, 0, GL_RGB,
-    2, 2, 0,
-    GL_RGB, GL_UNSIGNED_BYTE,
-    @TextureData
+  // create a temporary texture while the main one is loading
+  glCreateTextures(GL_TEXTURE_2D, 1, @TextureTemp);
+  glTextureParameteri(TextureTemp, GL_TEXTURE_WRAP_S, GL_REPEAT);
+  glTextureParameteri(TextureTemp, GL_TEXTURE_WRAP_T, GL_REPEAT);
+  glTextureParameteri(TextureTemp, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+  glTextureParameteri(TextureTemp, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+  glTextureStorage2D(TextureTemp, 1, GL_RGB8, 2, 2);
+  glTextureSubImage2D(
+    TextureTemp, 0, 0, 0,
+    2, 2, GL_RGB, GL_UNSIGNED_BYTE, @TextureData
   );
+  //glGenTextures(1, @TextureTemp);
+  //glBindTexture(GL_TEXTURE_2D, TextureTemp);
+  //glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+  //glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+  //glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+  //glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+  //glTexImage2D(
+  //  GL_TEXTURE_2D, 0, GL_RGB,
+  //  2, 2, 0,
+  //  GL_RGB, GL_UNSIGNED_BYTE,
+  //  @TextureData
+  //);
   Texture := 0;
   TaskLoadTexture := TaskLoadTexture.StartTask(@TF_LoadTexture, [AssetsFile('crate_c.png')]);
   Caption := 'PasOpenGL Loading...';
@@ -209,8 +235,9 @@ begin
   glBindVertexArray(VertexArray);
   glUseProgram(Shader);
   glUniformMatrix4fv(UniformWVP, 1, GL_TRUE, @WVP);
-  glActiveTexture(GL_TEXTURE0);
-  glBindTexture(GL_TEXTURE_2D, GetTexture);
+  glBindTextureUnit(0, GetTexture);
+  //glActiveTexture(GL_TEXTURE0);
+  //glBindTexture(GL_TEXTURE_2D, GetTexture);
   glUniform1i(UniformTex0, 0);
   glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_BYTE, nil);
 end;
