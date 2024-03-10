@@ -8,7 +8,7 @@ interface
 uses
   Classes, SysUtils, Forms, Controls, Graphics, Dialogs, ExtCtrls, PasOpenGL,
   CommonUtils, MediaUtils, Setup, EasyLazFreeType, LazFreeTypeFontCollection,
-  IntfGraphics, GraphType, LazFreeTypeIntfDrawer, FpImage, LazFreeType;
+  IntfGraphics, GraphType, LazFreeTypeIntfDrawer, FpImage, LazFreeType, Math;
 
 type TForm1 = class(TCommonForm)
 private
@@ -49,6 +49,7 @@ end;
 procedure TForm1.InitializeFont;
   var FontFamilyName: String;
   var TextSize: TUVec2i;
+  var MipLevels: UInt32;
   const TextStr = 'Hello World!';
 begin
   FontFamilyName := FontCollection.AddFile(LocalFile('fonts/FreeSerif.ttf')).Family.FamilyName;
@@ -74,6 +75,26 @@ begin
     colWhite
   );
   //Image.SaveToFile('Test.png');
+  //{ DSA
+  MipLevels := Round(Math.Log2(UMax(TextureSize.x, TextureSize.y)));
+  glCreateTextures(GL_TEXTURE_2D, 1, @FontTexture);
+  glTextureParameteri(FontTexture, GL_TEXTURE_WRAP_S, GL_CLAMP);
+  glTextureParameteri(FontTexture, GL_TEXTURE_WRAP_T, GL_CLAMP);
+  glTextureParameteri(FontTexture, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+  glTextureParameteri(FontTexture, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+  glTextureStorage2D(
+    FontTexture, MipLevels, GL_RGB8,
+    TextureSize.x, TextureSize.y
+  );
+  glTextureSubImage2D(
+    FontTexture, 0, 0, 0,
+    TextureSize.x, TextureSize.y,
+    GL_RED, GL_UNSIGNED_BYTE,
+    Image.PixelData
+  );
+  glGenerateTextureMipmap(FontTexture);
+  //}
+  { pre DSA
   glGenTextures(1, @FontTexture);
   glBindTexture(GL_TEXTURE_2D, FontTexture);
   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP);
@@ -87,6 +108,7 @@ begin
     Image.PixelData
   );
   glGenerateMipmap(GL_TEXTURE_2D);
+  //}
 end;
 
 procedure TForm1.FinalizeFont;
@@ -94,7 +116,7 @@ begin
   glDeleteTextures(1, @FontTexture);
   Drawer.Free;
   Image.Free;
-  MyFont.Free;
+  MyFont.Free;;
 end;
 
 procedure TForm1.Initialize;
@@ -117,6 +139,25 @@ procedure TForm1.Initialize;
   var ErrorBuffer: array[0..511] of AnsiChar;
 begin
   InitializeFont;
+  //{ DSA
+  glCreateVertexArrays(1, @VertexArray);
+  glCreateBuffers(1, @VertexBuffer);
+  glNamedBufferStorage(VertexBuffer, SizeOf(Vertices), @Vertices, 0);
+  glCreateBuffers(1, @IndexBuffer);
+  glNamedBufferStorage(IndexBuffer, SizeOf(Indices), @Indices, 0);
+  glVertexArrayVertexBuffer(VertexArray, 0, VertexBuffer, 0, SizeOf(Vertices[0]));
+  glVertexArrayElementBuffer(VertexArray, IndexBuffer);
+  glEnableVertexArrayAttrib(VertexArray, 0);
+  glVertexArrayAttribFormat(VertexArray, 0, 3, GL_FLOAT, GL_FALSE, 0);
+  glVertexArrayAttribBinding(VertexArray, 0, 0);
+  glEnableVertexArrayAttrib(VertexArray, 1);
+  glVertexArrayAttribFormat(VertexArray, 1, 4, GL_FLOAT, GL_FALSE, 12);
+  glVertexArrayAttribBinding(VertexArray, 1, 0);
+  glEnableVertexArrayAttrib(VertexArray, 2);
+  glVertexArrayAttribFormat(VertexArray, 2, 2, GL_FLOAT, GL_FALSE, 28);
+  glVertexArrayAttribBinding(VertexArray, 2, 0);
+  //}
+  { pre DSA
   glGenVertexArrays(1, @VertexArray);
   glGenBuffers(1, @VertexBuffer);
   glGenBuffers(1, @IndexBuffer);
@@ -125,6 +166,15 @@ begin
   glBufferData(GL_ARRAY_BUFFER, SizeOf(Vertices), @Vertices, GL_STATIC_DRAW);
   glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, IndexBuffer);
   glBufferData(GL_ELEMENT_ARRAY_BUFFER, SizeOf(Indices), @Indices, GL_STATIC_DRAW);
+  glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, SizeOf(Vertices[0]), Pointer(0));
+  glEnableVertexAttribArray(0);
+  glVertexAttribPointer(1, 4, GL_FLOAT, GL_FALSE, SizeOf(Vertices[0]), Pointer(12));
+  glEnableVertexAttribArray(1);
+  glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, SizeOf(Vertices[0]), Pointer(28));
+  glEnableVertexAttribArray(2);
+  glBindBuffer(GL_ARRAY_BUFFER, 0);
+  glBindVertexArray(0);
+  //}
   VertexShader := glCreateShader(GL_VERTEX_SHADER);
   ShaderSource := UFileToStr(LocalFile('shader_vs.txt'));
   Ptr := PAnsiChar(ShaderSource);
@@ -159,14 +209,6 @@ begin
   end;
   glDeleteShader(PixelShader);
   glDeleteShader(VertexShader);
-  glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, SizeOf(Vertices[0]), Pointer(0));
-  glEnableVertexAttribArray(0);
-  glVertexAttribPointer(1, 4, GL_FLOAT, GL_FALSE, SizeOf(Vertices[0]), Pointer(12));
-  glEnableVertexAttribArray(1);
-  glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, SizeOf(Vertices[0]), Pointer(28));
-  glEnableVertexAttribArray(2);
-  glBindBuffer(GL_ARRAY_BUFFER, 0);
-  glBindVertexArray(0);
   UniformWVP := glGetUniformLocation(Shader, PGLchar(PAnsiChar('WVP')));
   UniformTex0 := glGetUniformLocation(Shader, PGLchar(PAnsiChar('tex0')));
 end;
@@ -175,6 +217,8 @@ procedure TForm1.Finalize;
 begin
   glDeleteProgram(Shader);
   glDeleteBuffers(1, @VertexBuffer);
+  glDeleteBuffers(1, @IndexBuffer);
+  glDeleteVertexArrays(1, @VertexArray);
   FinalizeFont;
 end;
 
@@ -197,8 +241,9 @@ begin
   glBindVertexArray(VertexArray);
   glUseProgram(Shader);
   glUniformMatrix4fv(UniformWVP, 1, GL_TRUE, @WVP);
-  glActiveTexture(GL_TEXTURE0);
-  glBindTexture(GL_TEXTURE_2D, FontTexture);
+  glBindTextureUnit(0, FontTexture);
+  //glActiveTexture(GL_TEXTURE0);
+  //glBindTexture(GL_TEXTURE_2D, FontTexture);
   glUniform1i(UniformTex0, 0);
   glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_SHORT, nil);
 end;
