@@ -122,6 +122,23 @@ procedure TForm1.Initialize;
   var i: Integer;
   var ErrorBuffer: array[0..511] of AnsiChar;
 begin
+  glCreateVertexArrays(1, @VertexArray);
+  glCreateBuffers(1, @VertexBuffer);
+  glNamedBufferStorage(VertexBuffer, SizeOf(Vertices), @Vertices, 0);
+  glCreateBuffers(1, @IndexBuffer);
+  glNamedBufferStorage(IndexBuffer, SizeOf(Indices), @Indices, 0);
+  glVertexArrayVertexBuffer(VertexArray, 0, VertexBuffer, 0, SizeOf(Vertices[0]));
+  glVertexArrayElementBuffer(VertexArray, IndexBuffer);
+  glEnableVertexArrayAttrib(VertexArray, 0);
+  glVertexArrayAttribFormat(VertexArray, 0, 3, GL_FLOAT, GL_FALSE, 0);
+  glVertexArrayAttribBinding(VertexArray, 0, 0);
+  glEnableVertexArrayAttrib(VertexArray, 1);
+  glVertexArrayAttribFormat(VertexArray, 1, 4, GL_FLOAT, GL_FALSE, 12);
+  glVertexArrayAttribBinding(VertexArray, 1, 0);
+  glEnableVertexArrayAttrib(VertexArray, 2);
+  glVertexArrayAttribFormat(VertexArray, 2, 2, GL_FLOAT, GL_FALSE, 28);
+  glVertexArrayAttribBinding(VertexArray, 2, 0);
+  { old style buffer creation with context binding
   glGenVertexArrays(1, @VertexArray);
   glGenBuffers(1, @VertexBuffer);
   glGenBuffers(1, @IndexBuffer);
@@ -138,6 +155,7 @@ begin
   glEnableVertexAttribArray(2);
   glBindBuffer(GL_ARRAY_BUFFER, 0);
   glBindVertexArray(0);
+  //}
   VertexShader := glCreateShader(GL_VERTEX_SHADER);
   ShaderSource := UFileToStr(LocalFile('shader_vs.txt'));
   Ptr := PAnsiChar(ShaderSource);
@@ -208,6 +226,8 @@ begin
   glDeleteTextures(1, @TextureTemp);
   glDeleteProgram(Shader);
   glDeleteBuffers(1, @VertexBuffer);
+  glDeleteBuffers(1, @IndexBuffer);
+  glDeleteVertexArrays(1, @VertexArray);
 end;
 
 procedure TForm1.Tick;
