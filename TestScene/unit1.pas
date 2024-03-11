@@ -337,12 +337,14 @@ begin
   vs += 'void main() {'#$D#$A;
   if Assigned(SkinInfo) then
   begin
-    vs += '  mat4x4 S = ';
+    vs += '  mat4x4 S = ('#$D#$A;
     for i := 0 to SkinInfo^.BoneWeights - 1 do
     begin
-      vs += 'Bone[in_bone_index[' + IntToStr(i) + ']] * in_bone_weight[' + IntToStr(i) + ']';
-      if i < SkinInfo^.BoneWeights - 1 then vs += ' + ' else vs += ';'#$D#$A;
+      vs += '    (Bone[in_bone_index[' + IntToStr(i) + ']] * in_bone_weight[' + IntToStr(i) + '])';
+      if i < SkinInfo^.BoneWeights - 1 then vs += ' + ';
+      vs += #$D#$A;
     end;
+    vs += '  );'#$D#$A;
   end;
   for i := 0 to High(VertexDescriptor) do
   begin
@@ -370,7 +372,7 @@ begin
     end;
   end;
   vs += '}'#$D#$A;
-  ps := '#version 430 core'#$D#$A;
+  ps := '#version 450 core'#$D#$A;
   for i := 0 to High(VertexDescriptor) do
   begin
     if VertexDescriptor[i].Semantic = as_position then Continue;
@@ -383,8 +385,8 @@ begin
   ps += 'void main() {'#$D#$A;
   ps += '  out_color = texture(tex0, in_texcoord0.xy);'#$D#$A;
   ps += '}'#$D#$A;
-  //UStrToFile('vs_' + IntToStr(Hash) + '.txt', vs);
-  //UStrToFile('ps_' + IntToStr(Hash) + '.txt', ps);
+  UStrToFile('vs_' + IntToStr(Hash) + '.txt', vs);
+  UStrToFile('ps_' + IntToStr(Hash) + '.txt', ps);
   Result := TShader.Create(vs, ps);
   _ShaderMap.Add(Hash, Result);
 end;
