@@ -236,6 +236,7 @@ public
     const NodeData: TUSceneData.TNodeInterface
   );
   destructor Destroy; override;
+  procedure SetupAttachments(const NodeData: TUSceneData.TNodeInterface);
   procedure Setup;
 end;
 type TNodeShared = specialize TUSharedRef<TNode>;
@@ -849,6 +850,7 @@ begin
   for i := 0 to High(_Pose) do
   begin
     _JointBindings[i] := Form1.NodeRemap.FindValueByKey(AttachData.JointBindings[i]);
+    WriteLn(_JointBindings[i].Name);
   end;
   UpdatePose;
 end;
@@ -1030,12 +1032,28 @@ constructor TNode.Create(
   const NodeData: TUSceneData.TNodeInterface
 );
   var i: Int32;
-  var AttachMesh: TAttachmentMesh;
-  var AttachSkin: TAttachmentSkin;
 begin
   _Name := NodeData.Name;
   Parent := AParent;
+  Form1.NodeRemap.Add(NodeData, Self);
   _Transform := NodeData.Transform;
+  for i := 0 to High(NodeData.Children) do
+  begin
+    TNode.Create(Self, NodeData.Children[i]);
+  end;
+end;
+
+destructor TNode.Destroy;
+begin
+  specialize UArrClear<TNode>(_Children);
+  inherited Destroy;
+end;
+
+procedure TNode.SetupAttachments(const NodeData: TUSceneData.TNodeInterface);
+  var i: Int32;
+  var AttachMesh: TAttachmentMesh;
+  var AttachSkin: TAttachmentSkin;
+begin
   for i := 0 to High(NodeData.Attachments) do
   begin
     if NodeData.Attachments[i] is TUSceneData.TAttachmentMesh then
@@ -1053,17 +1071,14 @@ begin
       AttachSkin.Node := Self;
     end;
   end;
-  Form1.NodeRemap.Add(NodeData, Self);
   for i := 0 to High(NodeData.Children) do
   begin
-    TNode.Create(Self, NodeData.Children[i]);
+    Form1.NodeRemap.FindValueByKey(
+      NodeData.Children[i]
+    ).SetupAttachments(
+      NodeData.Children[i]
+    );
   end;
-end;
-
-destructor TNode.Destroy;
-begin
-  specialize UArrClear<TNode>(_Children);
-  inherited Destroy;
 end;
 
 procedure TNode.Setup;
@@ -1134,6 +1149,7 @@ begin
       MaterialRemap.Add(Scene.MaterialList[i], Materials[i]);
     end;
     Result := TNode.Create(nil, Scene.RootNode);
+    Result.Ptr.SetupAttachments(Scene.RootNode);
     SetLength(Animations, Length(Scene.AnimationList));
     for i := 0 to High(Animations) do
     begin
@@ -1154,6 +1170,9 @@ procedure TForm1.Initialize;
 begin
   AppStartTime := GetTickCount64;
   TaskLoad := TaskLoad.StartTask(@TF_Load, [AssetsFile('siren/siren_anim.dae')]);
+  //TaskLoad := TaskLoad.StartTask(@TF_Load, [AssetsFile('Vanguard/Vanguard.dae')]);
+  //TaskLoad := TaskLoad.StartTask(@TF_Load, [AssetsFile('X Bot.dae')]);
+  //TF_Load([AssetsFile('X Bot.dae')]);
   Caption := 'PasOpenGL Loading...';
   //Load(AssetsFile('siren/siren_anim.dae'));
   //Load('../Assets/skin.dae');
@@ -1219,11 +1238,14 @@ procedure TForm1.Tick;
         NewShader.Use;
         NewBuffer := AttachSkin.VertexArrays[i];
         glBindVertexArray(NewBuffer);
-        NewTexture := AttachSkin.Materials[i].Texture.Ptr.Handle;
-        glBindTextureUnit(0, NewTexture);
-        //glActiveTexture(GL_TEXTURE0);
-        //glBindTexture(GL_TEXTURE_2D, NewTexture);
-        glUniform1i(NewShader.UniformTex0, 0);
+        if (AttachSkin.Materials[i].Texture.IsValid) then
+        begin
+          NewTexture := AttachSkin.Materials[i].Texture.Ptr.Handle;
+          glBindTextureUnit(0, NewTexture);
+          //glActiveTexture(GL_TEXTURE0);
+          //glBindTexture(GL_TEXTURE_2D, NewTexture);
+          glUniform1i(NewShader.UniformTex0, 0);
+        end;
         glUniformMatrix4fv(NewShader.UniformWVP, 1, GL_TRUE, @WVP);
         glUniformMatrix4fv(NewShader.UniformBone, Length(AttachSkin.Pose), GL_TRUE, @AttachSkin.Pose[0]);
         AttachSkin.Skin.Mesh.DrawSubset(i);
