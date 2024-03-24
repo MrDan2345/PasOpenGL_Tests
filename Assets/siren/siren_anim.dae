@@ -157,10 +157,10 @@
               <color sid="ambient">0 0 0 1</color>
             </ambient>
             <diffuse>
-              <texture texture="siren_body_c_png-sampler"/>
+              <texture texture="siren_body_c_png-sampler" texcoord="TEXCOORD0"/>
             </diffuse>
             <specular>
-              <texture texture="siren_body_m_png-sampler"/>
+              <texture texture="siren_body_m_png-sampler" texcoord="TEXCOORD0"/>
             </specular>
             <shininess>
               <float sid="shininess">50</float>
@@ -210,10 +210,10 @@
               <color sid="ambient">0 0 0 1</color>
             </ambient>
             <diffuse>
-              <texture texture="Mouth_png-sampler"/>
+              <texture texture="Mouth_png-sampler" texcoord="TEXCOORD0"/>
             </diffuse>
             <specular>
-              <texture texture="Mouth_m_png-sampler"/>
+              <texture texture="Mouth_m_png-sampler" texcoord="TEXCOORD0"/>
             </specular>
             <shininess>
               <float sid="shininess">50</float>
@@ -266,10 +266,10 @@
               <color sid="ambient">0 0 0 1</color>
             </ambient>
             <diffuse>
-              <texture texture="siren_hands_c_png-sampler"/>
+              <texture texture="siren_hands_c_png-sampler" texcoord="TEXCOORD0"/>
             </diffuse>
             <specular>
-              <texture texture="siren_hands_m_png-sampler"/>
+              <texture texture="siren_hands_m_png-sampler" texcoord="TEXCOORD0"/>
             </specular>
             <shininess>
               <float sid="shininess">50</float>
@@ -329,10 +329,10 @@
               <color sid="ambient">0 0 0 1</color>
             </ambient>
             <diffuse>
-              <texture texture="siren_head_c_png-sampler"/>
+              <texture texture="siren_head_c_png-sampler" texcoord="TEXCOORD0"/>
             </diffuse>
             <specular>
-              <texture texture="siren_head_m_png-sampler"/>
+              <texture texture="siren_head_m_png-sampler" texcoord="TEXCOORD0"/>
             </specular>
             <shininess>
               <float sid="shininess">50</float>

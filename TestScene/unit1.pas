@@ -11,25 +11,33 @@ uses
 
 type TGLuintArray = array of TGLuint;
 type TNode = class;
+type TMaterial = class;
 
 type TShader = class(TURefClass)
 public
   type TSkinInfo = record
+    BoneCount: Int32;
     BoneWeights: Int32;
   end;
   type PSkinInfo = ^TSkinInfo;
 private
   var _Handle: TGLuint;
   var _UniformWVP: TGLint;
+  var _UniformMatColor: TGLint;
   var _UniformTex0: TGLint;
   var _UniformBone: TGLint;
   class var _ShaderMap: specialize TUMap<UInt64, TShader>;
 public
   property Handle: TGLuint read _Handle;
   property UniformWVP: TGLint read _UniformWVP;
+  property UniformMatColor: TGLint read _UniformMatColor;
   property UniformTex0: TGLint read _UniformTex0;
   property UniformBone: TGLint read _UniformBone;
-  class function AutoShader(const VertexDescriptor: TUVertexDescriptor; const SkinInfo: PSkinInfo = nil): TShader;
+  class function AutoShader(
+    const VertexDescriptor: TUVertexDescriptor;
+    const Material: TMaterial;
+    const SkinInfo: PSkinInfo = nil
+  ): TShader;
   constructor Create(const vs, ps: String);
   destructor Destroy; override;
   procedure Use;
@@ -115,8 +123,10 @@ public
   type TMaterialList = array of TMaterial;
 private
   var _Texture: TTextureShared;
+  var _Color: TUColor;
 public
   property Texture: TTextureShared read _Texture;
+  property Color: TUColor read _Color;
   constructor Create(const MaterialData: TUSceneData.TMaterialInterface);
   destructor Destroy; override;
 end;
@@ -265,6 +275,7 @@ public
   procedure Initialize; override;
   procedure Finalize; override;
   procedure Tick; override;
+  procedure PrintScene;
 end;
 
 var Form1: TForm1;
@@ -273,7 +284,11 @@ implementation
 
 {$R *.lfm}
 
-class function TShader.AutoShader(const VertexDescriptor: TUVertexDescriptor; const SkinInfo: PSkinInfo): TShader;
+class function TShader.AutoShader(
+  const VertexDescriptor: TUVertexDescriptor;
+  const Material: TMaterial;
+  const SkinInfo: PSkinInfo
+): TShader;
   function MakeHash: UInt64;
     var n: UInt32;
   begin
@@ -301,7 +316,7 @@ class function TShader.AutoShader(const VertexDescriptor: TUVertexDescriptor; co
   var Hash: UInt64;
   var Attrib: TUVertexAttribute;
   var vs, ps, Inputs, Outputs, AttName, AttSize: String;
-  var i, AttribIndex: Int32;
+  var i, BoneCount, AttribIndex: Int32;
 begin
   Hash := MakeHash;
   Result := _ShaderMap.FindValueByKey(Hash);
@@ -333,7 +348,8 @@ begin
   vs += 'uniform mat4x4 WVP;'#$D#$A;
   if Assigned(SkinInfo) then
   begin
-    vs += 'uniform mat4x4 Bone[200];'#$D#$A;
+    BoneCount := (((SkinInfo^.BoneCount - 1) div 100) + 1) * 100;
+    vs += 'uniform mat4x4 Bone[' + IntToStr(BoneCount) + '];'#$D#$A;
   end;
   vs += 'void main() {'#$D#$A;
   if Assigned(SkinInfo) then
@@ -382,12 +398,20 @@ begin
     ps += 'layout (location = ' + IntToStr(i) + ') in vec' + AttSize + ' in_' + AttName + ';'#$D#$A;
   end;
   ps += 'out vec4 out_color;'#$D#$A;
-  ps += 'uniform sampler2D tex0;'#$D#$A;
+  if Material.Texture.IsValid then
+  begin
+    ps += 'uniform sampler2D tex0;'#$D#$A;
+  end;
+  ps += 'uniform vec4 m_color;'#$D#$A;
   ps += 'void main() {'#$D#$A;
-  ps += '  out_color = texture(tex0, in_texcoord0.xy);'#$D#$A;
+  ps += '  out_color = m_color;'#$D#$A;
+  if Material.Texture.IsValid then
+  begin
+    ps += '  out_color *= texture(tex0, in_texcoord0.xy);'#$D#$A;
+  end;
   ps += '}'#$D#$A;
-  UStrToFile('vs_' + IntToStr(Hash) + '.txt', vs);
-  UStrToFile('ps_' + IntToStr(Hash) + '.txt', ps);
+  //UStrToFile('vs_' + IntToStr(Hash) + '.txt', vs);
+  //UStrToFile('ps_' + IntToStr(Hash) + '.txt', ps);
   Result := TShader.Create(vs, ps);
   _ShaderMap.Add(Hash, Result);
 end;
@@ -431,6 +455,7 @@ begin
   glDeleteShader(PixelShader);
   glDeleteShader(VertexShader);
   _UniformWVP := UniformLocation('WVP');
+  _UniformMatColor := UniformLocation('m_color');
   _UniformTex0 := UniformLocation('tex0');
   _UniformBone := UniformLocation('Bone');
 end;
@@ -637,17 +662,23 @@ end;
 
 constructor TMaterial.Create(const MaterialData: TUSceneData.TMaterialInterface);
   var i, j: Int32;
-  var Image: TUSceneData.TMaterialInterface.TParamImage;
+  var Param: TUSceneData.TMaterialInterface.TParam;
+  var ParamVec4: TUSceneData.TMaterialInterface.TParamVec4 absolute Param;
+  var Image: TUSceneData.TMaterialInterface.TParamImage absolute Param;
 begin
+  _Color := TUColor.White;
   for i := 0 to High(MaterialData.Params) do
-  if MaterialData.Params[i] is TUSceneData.TMaterialInterface.TParamImage then
   begin
-    Image := TUSceneData.TMaterialInterface.TParamImage(MaterialData.Params[i]);
-    j := Form1.TextureRemap.FindIndexByKey(Image.Image);
-    if j > -1 then
+    Param := MaterialData.Params[i];
+    if LowerCase(Param.Name) <> 'diffuse' then Continue;
+    if Param is TUSceneData.TMaterialInterface.TParamVec4 then
     begin
-      _Texture := Form1.TextureRemap[j];
-      Break;
+      _Color := ParamVec4.Value;
+    end
+    else if Param is TUSceneData.TMaterialInterface.TParamImage then
+    begin
+      j := Form1.TextureRemap.FindIndexByKey(Image.Image);
+      if j > -1 then _Texture := Form1.TextureRemap[j];
     end;
   end;
 end;
@@ -793,7 +824,7 @@ begin
     Subset := _Mesh.Subsets[SubsetId];
     vd := Subset.VertexDescriptor;
     specialize UArrAppend<TShaderShared>(
-      _Shaders, TShader.AutoShader(vd)
+      _Shaders, TShader.AutoShader(vd, _Materials[SubsetId])
     );
     glVertexArrayVertexBuffer(
       VertexArray,
@@ -883,9 +914,10 @@ begin
     MeshSubset := _Skin.Mesh.Subsets[SubsetId];
     VertexArray := _VertexArrays[SubsetId];
     vd := MeshSubset.VertexDescriptor;
+    SkinInfo.BoneCount := Length(_Skin.Joints);
     SkinInfo.BoneWeights := SkinSubset.WeightCount;
     specialize UArrAppend<TShaderShared>(
-      _Shaders, TShader.AutoShader(vd, @SkinInfo)
+      _Shaders, TShader.AutoShader(vd, _Materials[SubsetId], @SkinInfo)
     );
     glVertexArrayVertexBuffer(
       VertexArray,
@@ -1165,6 +1197,7 @@ end;
 
 function TForm1.RequestDebugContext: Boolean;
 begin
+  //Result := False;
   Result := True;
 end;
 
@@ -1172,7 +1205,8 @@ procedure TForm1.Initialize;
 begin
   AppStartTime := GetTickCount64;
   TaskLoad := TaskLoad.StartTask(@TF_Load, [AssetsFile('siren/siren_anim.dae')]);
-  //TaskLoad := TaskLoad.StartTask(@TF_Load, [AssetsFile('Vanguard/Vanguard.dae')]);
+  //TaskLoad := TaskLoad.StartTask(@TF_Load, [AssetsFile('Vanguard By T. Choonyung/Vanguard By T. Choonyung.dae')]);
+  //TaskLoad := TaskLoad.StartTask(@TF_Load, [AssetsFile('Vampire A Lusth/Vampire A Lusth.dae')]);
   //TaskLoad := TaskLoad.StartTask(@TF_Load, [AssetsFile('X Bot.dae')]);
   //TF_Load([AssetsFile('X Bot.dae')]);
   Caption := 'PasOpenGL Loading...';
@@ -1204,6 +1238,8 @@ procedure TForm1.Tick;
     var AttachSkin: TNode.TAttachmentSkin;
     var NewBuffer, NewTexture: TGLuint;
     var NewShader: TShader;
+    var Material: TMaterial;
+    var ColorVec: TUVec4;
     var Xf: TUMat;
     var i: Int32;
   begin
@@ -1215,15 +1251,22 @@ procedure TForm1.Tick;
       WVP := Xf * W * V * P;
       for i := 0 to High(AttachMesh.Mesh.Subsets) do
       begin
+        Material := AttachMesh.Materials[i];
         NewShader := AttachMesh.Shaders[i].Ptr;
         NewShader.Use;
         NewBuffer := AttachMesh.VertexArrays[i];
         glBindVertexArray(NewBuffer);
-        NewTexture := AttachMesh.Materials[i].Texture.Ptr.Handle;
-        glBindTextureUnit(0, NewTexture);
-        //glActiveTexture(GL_TEXTURE0);
-        //glBindTexture(GL_TEXTURE_2D, NewTexture);
-        glUniform1i(NewShader.UniformTex0, 0);
+        if Material.Texture.IsValid
+        and (NewShader.UniformTex0 >= 0) then
+        begin
+          NewTexture := Material.Texture.Ptr.Handle;
+          glBindTextureUnit(0, NewTexture);
+          //glActiveTexture(GL_TEXTURE0);
+          //glBindTexture(GL_TEXTURE_2D, NewTexture);
+          glUniform1i(NewShader.UniformTex0, 0);
+        end;
+        ColorVec := Material.Color;
+        glUniform4fv(NewShader.UniformMatColor, 1, @ColorVec);
         glUniformMatrix4fv(NewShader.UniformWVP, 1, GL_TRUE, @WVP);
         AttachMesh.Mesh.DrawSubset(i);
       end;
@@ -1236,18 +1279,22 @@ procedure TForm1.Tick;
       WVP := Xf * W * V * P;
       for i := 0 to High(AttachSkin.Skin.Subsets) do
       begin
+        Material := AttachSkin.Materials[i];
         NewShader := AttachSkin.Shaders[i].Ptr;
         NewShader.Use;
         NewBuffer := AttachSkin.VertexArrays[i];
         glBindVertexArray(NewBuffer);
-        if (AttachSkin.Materials[i].Texture.IsValid) then
+        if Material.Texture.IsValid
+        and (NewShader.UniformTex0 >= 0) then
         begin
-          NewTexture := AttachSkin.Materials[i].Texture.Ptr.Handle;
+          NewTexture := Material.Texture.Ptr.Handle;
           glBindTextureUnit(0, NewTexture);
           //glActiveTexture(GL_TEXTURE0);
           //glBindTexture(GL_TEXTURE_2D, NewTexture);
           glUniform1i(NewShader.UniformTex0, 0);
         end;
+        ColorVec := Material.Color;
+        glUniform4fv(NewShader.UniformMatColor, 1, @ColorVec);
         glUniformMatrix4fv(NewShader.UniformWVP, 1, GL_TRUE, @WVP);
         glUniformMatrix4fv(NewShader.UniformBone, Length(AttachSkin.Pose), GL_TRUE, @AttachSkin.Pose[0]);
         AttachSkin.Skin.Mesh.DrawSubset(i);
@@ -1269,7 +1316,10 @@ procedure TForm1.Tick;
   var t: TUFloat;
   var i: Int32;
 begin
-  W := TUMat.RotationZ(((GetTickCount64 mod 4000) / 4000) * UTwoPi);
+  W := TUMat.Identity;
+  //W := TUMat.Scaling(0.05);
+  //W := W * TUMat.RotationX(UHalfPi);
+  W := W * TUMat.RotationZ(((GetTickCount64 mod 4000) / 4000) * UTwoPi);
   v := TUMat.View(TUVec3.Make(10, 10, 10), TUVec3.Make(0, 0, 5), TUVec3.Make(0, 0, 1));
   P := TUMat.Proj(UPi * 0.3, ClientWidth / ClientHeight, 0.1, 100);
   WVP := W * V * P;
@@ -1296,8 +1346,27 @@ begin
     RootNode := TaskLoad.TaskResult;
     TaskLoad.Reset;
     RootNode.Ptr.Setup;
+    PrintScene;
     Caption := 'PasOpenGL';
   end;
+end;
+
+procedure TForm1.PrintScene;
+  procedure PrintNode(const Node: TNode; const Offset: String = '');
+    var i: Int32;
+  begin
+    WriteLn(Offset, Node.Name, ' (', Node.ClassName, ')');
+    for i := 0 to High(Node.Attachments) do
+    begin
+      WriteLn(Offset, Node.Attachments[i].ClassName);
+    end;
+    for i := 0 to High(Node.Children) do
+    begin
+      PrintNode(Node.Children[i], Offset + '  ');
+    end;
+  end;
+begin
+  PrintNode(RootNode.Ptr);
 end;
 
 end.

@@ -116,7 +116,7 @@
               <color sid="ambient">0 0 0 1</color>
             </ambient>
             <diffuse>
-              <texture texture="SirenBody_Bm_png-sampler"/>
+              <texture texture="SirenBody_Bm_png-sampler" texcoord="TEXCOORD0"/>
             </diffuse>
             <specular>
               <color sid="specular">0.5 0.5 0.5 1</color>
@@ -152,7 +152,7 @@
               <color sid="ambient">0 0 0 1</color>
             </ambient>
             <diffuse>
-              <texture texture="Mouth_png-sampler"/>
+              <texture texture="Mouth_png-sampler" texcoord="TEXCOORD0"/>
             </diffuse>
             <specular>
               <color sid="specular">0.5 0.5 0.5 1</color>
@@ -188,7 +188,7 @@
               <color sid="ambient">0 0 0 1</color>
             </ambient>
             <diffuse>
-              <texture texture="SirenHands_Dif_png-sampler"/>
+              <texture texture="SirenHands_Dif_png-sampler" texcoord="TEXCOORD0"/>
             </diffuse>
             <specular>
               <color sid="specular">0.5 0.5 0.5 1</color>
@@ -224,7 +224,7 @@
               <color sid="ambient">0 0 0 1</color>
             </ambient>
             <diffuse>
-              <texture texture="SirenHead_Bm_png-sampler"/>
+              <texture texture="SirenHead_Bm_png-sampler" texcoord="TEXCOORD0"/>
             </diffuse>
             <specular>
               <color sid="specular">0.5 0.5 0.5 1</color>
