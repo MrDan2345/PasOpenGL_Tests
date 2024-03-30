@@ -55,7 +55,7 @@
     </Target>
     <SearchPaths>
       <IncludeFiles Value="$(ProjOutDir)"/>
-      <OtherUnitFiles Value="..;..\PasUtils;..\Common;..\PasOpenGL"/>
+      <OtherUnitFiles Value="..;..\Common;..\PasOpenGL;..\PasOpenGL\PasUtils"/>
       <UnitOutputDirectory Value="lib\$(TargetCPU)-$(TargetOS)"/>
     </SearchPaths>
     <Linking>
@@ -71,9 +71,6 @@
       <CompilerMessages>
         <IgnoredMessages idx5024="True"/>
       </CompilerMessages>
-      <ConfigFile>
-        <WriteConfigFilePath Value="$(ProjOutDir)\fpclaz.cfg"/>
-      </ConfigFile>
     </Other>
   </CompilerOptions>
   <Debugging>

@@ -39,7 +39,7 @@
     </Target>
     <SearchPaths>
       <IncludeFiles Value="$(ProjOutDir)"/>
-      <OtherUnitFiles Value="..;..\PasUtils;..\PasOpenGL"/>
+      <OtherUnitFiles Value="..;..\PasOpenGL;..\PasOpenGL\PasUtils"/>
       <UnitOutputDirectory Value="lib\$(TargetCPU)-$(TargetOS)"/>
     </SearchPaths>
     <Linking>
@@ -47,11 +47,6 @@
         <DebugInfoType Value="dsDwarf2Set"/>
       </Debugging>
     </Linking>
-    <Other>
-      <ConfigFile>
-        <WriteConfigFilePath Value="$(ProjOutDir)\fpclaz.cfg"/>
-      </ConfigFile>
-    </Other>
   </CompilerOptions>
   <Debugging>
     <Exceptions>
