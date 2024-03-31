@@ -1155,7 +1155,7 @@ begin
   if not FileExists(FileName) then Exit(nil);
   MakeCurrentShared;
   LoadDir := ExtractFileDir(FileName);
-  Scene := TUSceneDataDAE.Create([sdo_optimize]);
+  Scene := TUSceneDataDAE.Create([sdo_optimize)], sdu_z);
   try
     Scene.Load(FileName);
     SetLength(Textures, Length(Scene.ImageList));
