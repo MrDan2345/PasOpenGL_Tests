@@ -1155,7 +1155,7 @@ begin
   if not FileExists(FileName) then Exit(nil);
   MakeCurrentShared;
   LoadDir := ExtractFileDir(FileName);
-  Scene := TUSceneDataDAE.Create([sdo_optimize)], sdu_z);
+  Scene := TUSceneDataDAE.Create([sdo_optimize], sdu_y);
   try
     Scene.Load(FileName);
     SetLength(Textures, Length(Scene.ImageList));
@@ -1319,8 +1319,8 @@ begin
   W := TUMat.Identity;
   //W := TUMat.Scaling(0.05);
   //W := W * TUMat.RotationX(UHalfPi);
-  W := W * TUMat.RotationZ(((GetTickCount64 mod 4000) / 4000) * UTwoPi);
-  v := TUMat.View(TUVec3.Make(10, 10, 10), TUVec3.Make(0, 0, 5), TUVec3.Make(0, 0, 1));
+  W := W * TUMat.RotationY(((GetTickCount64 mod 4000) / 4000) * UTwoPi);
+  v := TUMat.View(TUVec3.Make(10, 10, 10), TUVec3.Make(0, 5, 0), TUVec3.Make(0, 1, 0));
   P := TUMat.Proj(UPi * 0.3, ClientWidth / ClientHeight, 0.1, 100);
   WVP := W * V * P;
 

@@ -4,8 +4,8 @@ object Form1: TForm1
   Top = 252
   Width = 1000
   Caption = 'PasOpenGL'
-  OnActivate = FormActivate
-  OnClose = FormClose
   Position = poScreenCenter
   LCLVersion = '3.99.0.0'
+  OnActivate = FormActivate
+  OnClose = FormClose
 end
