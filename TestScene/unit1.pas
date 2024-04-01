@@ -1155,7 +1155,7 @@ begin
   if not FileExists(FileName) then Exit(nil);
   MakeCurrentShared;
   LoadDir := ExtractFileDir(FileName);
-  Scene := TUSceneDataDAE.Create([sdo_optimize], sdu_y);
+  Scene := TUSceneDataDAE.Create([{sdo_optimize}], sdu_y);
   try
     Scene.Load(FileName);
     SetLength(Textures, Length(Scene.ImageList));
@@ -1204,10 +1204,10 @@ end;
 procedure TForm1.Initialize;
 begin
   AppStartTime := GetTickCount64;
-  TaskLoad := TaskLoad.StartTask(@TF_Load, [AssetsFile('siren/siren_anim.dae')]);
+  //TaskLoad := TaskLoad.StartTask(@TF_Load, [AssetsFile('siren/siren_anim.dae')]);
   //TaskLoad := TaskLoad.StartTask(@TF_Load, [AssetsFile('Vanguard By T. Choonyung/Vanguard By T. Choonyung.dae')]);
   //TaskLoad := TaskLoad.StartTask(@TF_Load, [AssetsFile('Vampire A Lusth/Vampire A Lusth.dae')]);
-  //TaskLoad := TaskLoad.StartTask(@TF_Load, [AssetsFile('X Bot.dae')]);
+  TaskLoad := TaskLoad.StartTask(@TF_Load, [AssetsFile('X Bot.dae')]);
   //TF_Load([AssetsFile('X Bot.dae')]);
   Caption := 'PasOpenGL Loading...';
   //Load(AssetsFile('siren/siren_anim.dae'));
@@ -1307,18 +1307,20 @@ procedure TForm1.Tick;
   end;
   procedure ApplyAnimation(const Animation: TAnimation; const Time: TUFloat);
     var i: Int32;
+    var Xf: TUMat;
   begin
     for i := 0 to High(Animation.Tracks) do
     begin
-      Animation.Tracks[i].Target.LocalTransform := Animation.Tracks[i].Sample(Time).Norm;
+      Xf := Animation.Tracks[i].Sample(Time);
+      Xf := Xf.Norm;
+      Animation.Tracks[i].Target.LocalTransform := Xf;
     end;
   end;
   var t: TUFloat;
   var i: Int32;
 begin
   W := TUMat.Identity;
-  //W := TUMat.Scaling(0.05);
-  //W := W * TUMat.RotationX(UHalfPi);
+  W := TUMat.Scaling(0.05);
   W := W * TUMat.RotationY(((GetTickCount64 mod 4000) / 4000) * UTwoPi);
   v := TUMat.View(TUVec3.Make(10, 10, 10), TUVec3.Make(0, 5, 0), TUVec3.Make(0, 1, 0));
   P := TUMat.Proj(UPi * 0.3, ClientWidth / ClientHeight, 0.1, 100);
