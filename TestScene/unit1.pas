@@ -380,7 +380,8 @@ begin
     else if VertexDescriptor[i].Semantic = as_texcoord then
     begin
       AttName := AttributeName(VertexDescriptor[i]);
-      vs += '  out_' + AttName + ' = vec2(in_' + AttName + '.x, ' + '1-in_' + AttName + '.y);'#$D#$A;
+      //vs += '  out_' + AttName + ' = vec2(in_' + AttName + '.x, ' + '1-in_' + AttName + '.y);'#$D#$A;
+      vs += '  out_' + AttName + ' = vec2(in_' + AttName + '.x, ' + 'in_' + AttName + '.y);'#$D#$A;
     end
     else
     begin
@@ -1208,7 +1209,6 @@ begin
   //TaskLoad := TaskLoad.StartTask(@TF_Load, [AssetsFile('Vanguard By T. Choonyung/Vanguard By T. Choonyung.dae')]);
   //TaskLoad := TaskLoad.StartTask(@TF_Load, [AssetsFile('Vampire A Lusth/Vampire A Lusth.dae')]);
   TaskLoad := TaskLoad.StartTask(@TF_Load, [AssetsFile('X Bot.dae')]);
-  //TF_Load([AssetsFile('X Bot.dae')]);
   Caption := 'PasOpenGL Loading...';
   //Load(AssetsFile('siren/siren_anim.dae'));
   //Load('../Assets/skin.dae');
