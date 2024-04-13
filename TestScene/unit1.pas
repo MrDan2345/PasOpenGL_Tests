@@ -10,6 +10,7 @@ uses
   CommonUtils, MediaUtils, Setup, Math;
 
 type TGLuintArray = array of TGLuint;
+type TLoadingContext = class;
 type TNode = class;
 type TMaterial = class;
 
@@ -103,7 +104,10 @@ public
   property Subsets: TSubsetList read _Subsets;
   property Joints: TJointList read _Joints;
   property Bind: TUMat read _Bind;
-  constructor Create(const SkinData: TUSceneData.TSkinInterface);
+  constructor Create(
+    constref Context: TLoadingContext;
+    const SkinData: TUSceneData.TSkinInterface
+  );
   destructor Destroy; override;
 end;
 type TSkinShared = specialize TUSharedRef<TSkin>;
@@ -113,7 +117,10 @@ private
   var _Handle: TGLuint;
 public
   property Handle: TGLuint read _Handle;
-  constructor Create(const ImageData: TUSceneData.TImageInterface);
+  constructor Create(
+    const Context: TLoadingContext;
+    const ImageData: TUSceneData.TImageInterface
+  );
   destructor Destroy; override;
 end;
 type TTextureShared = specialize TUSharedRef<TTexture>;
@@ -127,7 +134,10 @@ private
 public
   property Texture: TTextureShared read _Texture;
   property Color: TUColor read _Color;
-  constructor Create(const MaterialData: TUSceneData.TMaterialInterface);
+  constructor Create(
+    const Context: TLoadingContext;
+    const MaterialData: TUSceneData.TMaterialInterface
+  );
   destructor Destroy; override;
 end;
 type TMaterialShared = specialize TUSharedRef<TMaterial>;
@@ -154,7 +164,10 @@ public
     property Target: TNode read _Target;
     property MaxTime: TUFloat read _MaxTime;
     function Sample(const Time: TUFloat; const Loop: Boolean = True): TUMat;
-    constructor Create(const TrackData: TUSceneData.TAnimationInterface.TTrack);
+    constructor Create(
+      const Context: TLoadingContext;
+      const TrackData: TUSceneData.TAnimationInterface.TTrack
+    );
     destructor Destroy; override;
   end;
   type TTrackList = array of TTrack;
@@ -162,7 +175,10 @@ private
   var _Tracks: TTrackList;
 public
   property Tracks: TTrackList read _Tracks;
-  constructor Create(const AnimationData: TUSceneData.TAnimationInterfaceList);
+  constructor Create(
+    const Context: TLoadingContext;
+    const AnimationData: TUSceneData.TAnimationInterfaceList
+  );
   destructor Destroy; override;
 end;
 type TAnimationShared = specialize TUSharedRef<TAnimation>;
@@ -189,7 +205,10 @@ public
     property Materials: TMaterial.TMaterialList read _Materials;
     property Shaders: TShaderList read _Shaders;
     property VertexArrays: TGLuintArray read _VertexArrays;
-    constructor Create(const AttachData: TUSceneData.TAttachmentMesh);
+    constructor Create(
+      const Context: TLoadingContext;
+      const AttachData: TUSceneData.TAttachmentMesh
+    );
     destructor Destroy; override;
     procedure Setup; override;
   end;
@@ -213,7 +232,10 @@ public
     property Shaders: TShaderList read _Shaders;
     property VertexArrays: TGLuintArray read _VertexArrays;
     property Pose: TUMatArray read _Pose;
-    constructor Create(const AttachData: TUSceneData.TAttachmentSkin);
+    constructor Create(
+      const Context: TLoadingContext;
+      const AttachData: TUSceneData.TAttachmentSkin
+    );
     destructor Destroy; override;
     procedure Setup; override;
     procedure UpdatePose;
@@ -242,14 +264,29 @@ public
   property Transform: TUMat read _Transform write SetTransform;
   property LocalTransform: TUMat read GetLocalTransform write SetLocalTransform;
   constructor Create(
+    const Context: TLoadingContext;
     const AParent: TNode;
     const NodeData: TUSceneData.TNodeInterface
   );
   destructor Destroy; override;
-  procedure SetupAttachments(const NodeData: TUSceneData.TNodeInterface);
+  procedure SetupAttachments(
+    const Context: TLoadingContext;
+    const NodeData: TUSceneData.TNodeInterface
+  );
   procedure Setup;
 end;
 type TNodeShared = specialize TUSharedRef<TNode>;
+
+type TLoadingContext = class
+public
+  var TextureRemap: specialize TUMap<Pointer, TTextureShared>;
+  var MeshRemap: specialize TUMap<Pointer, TMeshShared>;
+  var SkinRemap: specialize TUMap<Pointer, TSkinShared>;
+  var MaterialRemap: specialize TUMap<Pointer, TMaterialShared>;
+  var NodeRemap: specialize TUMap<Pointer, TNode>;
+  var LoadDir: String;
+  constructor Create(const FilePath: String);
+end;
 
 type TForm1 = class(TCommonForm)
 private
@@ -259,13 +296,7 @@ private
   var Materials: array of TMaterialShared;
   var Animations: array of TAnimationShared;
   var RootNode: TNodeShared;
-  var TextureRemap: specialize TUMap<Pointer, TTextureShared>;
-  var MeshRemap: specialize TUMap<Pointer, TMeshShared>;
-  var SkinRemap: specialize TUMap<Pointer, TSkinShared>;
-  var MaterialRemap: specialize TUMap<Pointer, TMaterialShared>;
-  var NodeRemap: specialize TUMap<Pointer, TNode>;
   var AppStartTime: UInt64;
-  var LoadDir: String;
   var TaskLoad: specialize TUTask<TNodeShared>;
   procedure ImageFormatToGL(const ImageFormat: TUImageDataFormat; out Format, DataType: TGLenum);
   function TF_Load(const Args: array of const): TNodeShared;
@@ -580,10 +611,10 @@ begin
   inherited Destroy;
 end;
 
-constructor TSkin.Create(const SkinData: TUSceneData.TSkinInterface);
+constructor TSkin.Create(constref Context: TLoadingContext; const SkinData: TUSceneData.TSkinInterface);
   var SubsetId, JointId: Int32;
 begin
-  _Mesh := Form1.MeshRemap.FindValueByKey(SkinData.Mesh).Ptr;
+  _Mesh := Context.MeshRemap.FindValueByKey(SkinData.Mesh).Ptr;
   SetLength(_Subsets, Length(_Mesh.Subsets));
   for SubsetId := 0 to High(_Subsets) do
   begin
@@ -607,14 +638,17 @@ begin
   inherited Destroy;
 end;
 
-constructor TTexture.Create(const ImageData: TUSceneData.TImageInterface);
+constructor TTexture.Create(
+  const Context: TLoadingContext;
+  const ImageData: TUSceneData.TImageInterface
+);
   var Image: TUImageDataShared;
   var TextureFormat, TextureType: TGLenum;
   var MipLevels: UInt32;
 begin
   //Image := ULoadImageData('../Assets/siren/' + ImageData.FileName);
   //Image := ULoadImageData('../Assets/' + ImageData.FileName);
-  Image := ULoadImageData(Form1.LoadDir + '/' + ImageData.FileName);
+  Image := ULoadImageData(Context.LoadDir + '/' + ImageData.FileName);
   if not Image.IsValid then
   begin
     _Handle := 0;
@@ -661,7 +695,10 @@ begin
   inherited Destroy;
 end;
 
-constructor TMaterial.Create(const MaterialData: TUSceneData.TMaterialInterface);
+constructor TMaterial.Create(
+  const Context: TLoadingContext;
+  const MaterialData: TUSceneData.TMaterialInterface
+);
   var i, j: Int32;
   var Param: TUSceneData.TMaterialInterface.TParam;
   var ParamVec4: TUSceneData.TMaterialInterface.TParamVec4 absolute Param;
@@ -678,8 +715,8 @@ begin
     end
     else if Param is TUSceneData.TMaterialInterface.TParamImage then
     begin
-      j := Form1.TextureRemap.FindIndexByKey(Image.Image);
-      if j > -1 then _Texture := Form1.TextureRemap[j];
+      j := Context.TextureRemap.FindIndexByKey(Image.Image);
+      if j > -1 then _Texture := Context.TextureRemap[j];
     end;
   end;
 end;
@@ -689,14 +726,17 @@ begin
   inherited Destroy;
 end;
 
-constructor TAnimation.Create(const AnimationData: TUSceneData.TAnimationInterfaceList);
+constructor TAnimation.Create(
+  const Context: TLoadingContext;
+  const AnimationData: TUSceneData.TAnimationInterfaceList
+);
   var i, j: Int32;
 begin
   for i := 0 to High(AnimationData) do
   for j := 0 to High(AnimationData[i].Tracks) do
   begin
     specialize UArrAppend<TTrack>(
-      _Tracks, TTrack.Create(AnimationData[i].Tracks[j])
+      _Tracks, TTrack.Create(Context, AnimationData[i].Tracks[j])
     );
   end;
 end;
@@ -751,10 +791,13 @@ begin
   end;
 end;
 
-constructor TAnimation.TTrack.Create(const TrackData: TUSceneData.TAnimationInterface.TTrack);
+constructor TAnimation.TTrack.Create(
+  const Context: TLoadingContext;
+  const TrackData: TUSceneData.TAnimationInterface.TTrack
+);
   var i: Int32;
 begin
-  _Target := Form1.NodeRemap.FindValueByKey(TrackData.Target);
+  _Target := Context.NodeRemap.FindValueByKey(TrackData.Target);
   SetLength(_Keys, Length(TrackData.Keys));
   for i := 0 to High(_Keys) do
   begin
@@ -782,18 +825,19 @@ begin
 end;
 
 constructor TNode.TAttachmentMesh.Create(
+  const Context: TLoadingContext;
   const AttachData: TUSceneData.TAttachmentMesh
 );
   var i: Int32;
 begin
   inherited Create;
-  _Mesh := Form1.MeshRemap.FindValueByKey(AttachData.Mesh).Ptr;
+  _Mesh := Context.MeshRemap.FindValueByKey(AttachData.Mesh).Ptr;
   SetLength(_Materials, Length(AttachData.MaterialBindings));
   for i := 0 to High(_Materials) do
   begin
     if Assigned(AttachData.MaterialBindings[i].BaseMaterial) then
     begin
-      _Materials[i] := Form1.MaterialRemap.FindValueByKey(
+      _Materials[i] := Context.MaterialRemap.FindValueByKey(
         AttachData.MaterialBindings[i].BaseMaterial
       ).Ptr;
     end
@@ -863,17 +907,20 @@ begin
   glBindVertexArray(0);
 end;
 
-constructor TNode.TAttachmentSkin.Create(const AttachData: TUSceneData.TAttachmentSkin);
+constructor TNode.TAttachmentSkin.Create(
+  const Context: TLoadingContext;
+  const AttachData: TUSceneData.TAttachmentSkin
+);
   var i: Int32;
 begin
   inherited Create;
-  _Skin := Form1.SkinRemap.FindValueByKey(AttachData.Skin).Ptr;
+  _Skin := Context.SkinRemap.FindValueByKey(AttachData.Skin).Ptr;
   SetLength(_Materials, Length(AttachData.MaterialBindings));
   for i := 0 to High(_Materials) do
   begin
     if Assigned(AttachData.MaterialBindings[i].BaseMaterial) then
     begin
-      _Materials[i] := Form1.MaterialRemap.FindValueByKey(
+      _Materials[i] := Context.MaterialRemap.FindValueByKey(
         AttachData.MaterialBindings[i].BaseMaterial
       ).Ptr;
     end
@@ -886,7 +933,7 @@ begin
   SetLength(_JointBindings, Length(_Skin.Joints));
   for i := 0 to High(_Pose) do
   begin
-    _JointBindings[i] := Form1.NodeRemap.FindValueByKey(AttachData.JointBindings[i]);
+    _JointBindings[i] := Context.NodeRemap.FindValueByKey(AttachData.JointBindings[i]);
     WriteLn(_JointBindings[i].Name);
   end;
   UpdatePose;
@@ -1066,6 +1113,7 @@ begin
 end;
 
 constructor TNode.Create(
+  const Context: TLoadingContext;
   const AParent: TNode;
   const NodeData: TUSceneData.TNodeInterface
 );
@@ -1073,11 +1121,11 @@ constructor TNode.Create(
 begin
   _Name := NodeData.Name;
   Parent := AParent;
-  Form1.NodeRemap.Add(NodeData, Self);
+  Context.NodeRemap.Add(NodeData, Self);
   _Transform := NodeData.Transform;
   for i := 0 to High(NodeData.Children) do
   begin
-    TNode.Create(Self, NodeData.Children[i]);
+    TNode.Create(Context, Self, NodeData.Children[i]);
   end;
 end;
 
@@ -1087,7 +1135,10 @@ begin
   inherited Destroy;
 end;
 
-procedure TNode.SetupAttachments(const NodeData: TUSceneData.TNodeInterface);
+procedure TNode.SetupAttachments(
+  const Context: TLoadingContext;
+  const NodeData: TUSceneData.TNodeInterface
+);
   var i: Int32;
   var AttachMesh: TAttachmentMesh;
   var AttachSkin: TAttachmentSkin;
@@ -1097,6 +1148,7 @@ begin
     if NodeData.Attachments[i] is TUSceneData.TAttachmentMesh then
     begin
       AttachMesh := TAttachmentMesh.Create(
+        Context,
         TUSceneData.TAttachmentMesh(NodeData.Attachments[i])
       );
       AttachMesh.Node := Self;
@@ -1104,6 +1156,7 @@ begin
     else if NodeData.Attachments[i] is TUSceneData.TAttachmentSkin then
     begin
       AttachSkin := TAttachmentSkin.Create(
+        Context,
         TUSceneData.TAttachmentSkin(NodeData.Attachments[i])
       );
       AttachSkin.Node := Self;
@@ -1111,9 +1164,10 @@ begin
   end;
   for i := 0 to High(NodeData.Children) do
   begin
-    Form1.NodeRemap.FindValueByKey(
+    Context.NodeRemap.FindValueByKey(
       NodeData.Children[i]
     ).SetupAttachments(
+      Context,
       NodeData.Children[i]
     );
   end;
@@ -1133,6 +1187,11 @@ begin
   end;
 end;
 
+constructor TLoadingContext.Create(const FilePath: String);
+begin
+  LoadDir := ExtractFileDir(FilePath);
+end;
+
 procedure TForm1.ImageFormatToGL(const ImageFormat: TUImageDataFormat; out Format, DataType: TGLenum);
 begin
   case ImageFormat of
@@ -1150,6 +1209,7 @@ begin
 end;
 
 function TForm1.TF_Load(const Args: array of const): TNodeShared;
+  var Context: TLoadingContext;
   var i: Integer;
   var Scene: TUSceneDataDAE;
   var FileName: String;
@@ -1158,41 +1218,42 @@ begin
   FileName := AnsiString(Args[0].VAnsiString);
   if not FileExists(FileName) then Exit(nil);
   MakeCurrentShared;
-  LoadDir := ExtractFileDir(FileName);
+  Context := TLoadingContext.Create(FileName);
   Scene := TUSceneDataDAE.Create([sdo_optimize], sdu_y);
   try
     Scene.Load(FileName);
     SetLength(Textures, Length(Scene.ImageList));
     for i := 0 to High(Textures) do
     begin
-      Textures[i] := TTexture.Create(Scene.ImageList[i]);
-      TextureRemap.Add(Scene.ImageList[i], Textures[i]);
+      Textures[i] := TTexture.Create(Context, Scene.ImageList[i]);
+      Context.TextureRemap.Add(Scene.ImageList[i], Textures[i]);
     end;
     SetLength(Meshes, Length(Scene.MeshList));
     for i := 0 to High(Meshes) do
     begin
       Meshes[i] := TMesh.Create(Scene.MeshList[i]);
-      MeshRemap.Add(Scene.MeshList[i], Meshes[i]);
+      Context.MeshRemap.Add(Scene.MeshList[i], Meshes[i]);
     end;
     SetLength(Skins, Length(Scene.SkinList));
     for i := 0 to High(Skins) do
     begin
-      Skins[i] := TSkin.Create(Scene.SkinList[i]);
-      SkinRemap.Add(Scene.SkinList[i], Skins[i]);
+      Skins[i] := TSkin.Create(Context, Scene.SkinList[i]);
+      Context.SkinRemap.Add(Scene.SkinList[i], Skins[i]);
     end;
     SetLength(Materials, Length(Scene.MaterialList));
     for i := 0 to High(Materials) do
     begin
-      Materials[i] := TMaterial.Create(Scene.MaterialList[i]);
-      MaterialRemap.Add(Scene.MaterialList[i], Materials[i]);
+      Materials[i] := TMaterial.Create(Context, Scene.MaterialList[i]);
+      Context.MaterialRemap.Add(Scene.MaterialList[i], Materials[i]);
     end;
-    Result := TNode.Create(nil, Scene.RootNode);
-    Result.Ptr.SetupAttachments(Scene.RootNode);
+    Result := TNode.Create(Context, nil, Scene.RootNode);
+    Result.Ptr.SetupAttachments(Context, Scene.RootNode);
     specialize UArrAppend<TAnimationShared>(
-      Animations, TAnimation.Create(Scene.AnimationList)
+      Animations, TAnimation.Create(Context, Scene.AnimationList)
     );
   finally
     FreeAndNil(Scene);
+    FreeAndNil(Context);
   end;
   glFlush();
 end;
@@ -1219,11 +1280,6 @@ end;
 
 procedure TForm1.Finalize;
 begin
-  TextureRemap.Clear;
-  MaterialRemap.Clear;
-  SkinRemap.Clear;
-  MeshRemap.Clear;
-  NodeRemap.Clear;
   RootNode := nil;
   Skins := nil;
   Meshes := nil;
