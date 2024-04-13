@@ -162,7 +162,7 @@ private
   var _Tracks: TTrackList;
 public
   property Tracks: TTrackList read _Tracks;
-  constructor Create(const AnimationData: TUSceneData.TAnimationInterface);
+  constructor Create(const AnimationData: TUSceneData.TAnimationInterfaceList);
   destructor Destroy; override;
 end;
 type TAnimationShared = specialize TUSharedRef<TAnimation>;
@@ -689,18 +689,21 @@ begin
   inherited Destroy;
 end;
 
-constructor TAnimation.Create(const AnimationData: TUSceneData.TAnimationInterface);
-  var i: Int32;
+constructor TAnimation.Create(const AnimationData: TUSceneData.TAnimationInterfaceList);
+  var i, j: Int32;
 begin
-  SetLength(_Tracks, Length(AnimationData.Tracks));
-  for i := 0 to High(_Tracks) do
+  for i := 0 to High(AnimationData) do
+  for j := 0 to High(AnimationData[i].Tracks) do
   begin
-    _Tracks[i] := TTrack.Create(AnimationData.Tracks[i]);
+    specialize UArrAppend<TTrack>(
+      _Tracks, TTrack.Create(AnimationData[i].Tracks[j])
+    );
   end;
 end;
 
 destructor TAnimation.Destroy;
 begin
+  specialize UArrClear<TTrack>(_Tracks);
   inherited Destroy;
 end;
 
@@ -1156,7 +1159,7 @@ begin
   if not FileExists(FileName) then Exit(nil);
   MakeCurrentShared;
   LoadDir := ExtractFileDir(FileName);
-  Scene := TUSceneDataDAE.Create([{sdo_optimize}], sdu_y);
+  Scene := TUSceneDataDAE.Create([sdo_optimize], sdu_y);
   try
     Scene.Load(FileName);
     SetLength(Textures, Length(Scene.ImageList));
@@ -1185,11 +1188,9 @@ begin
     end;
     Result := TNode.Create(nil, Scene.RootNode);
     Result.Ptr.SetupAttachments(Scene.RootNode);
-    SetLength(Animations, Length(Scene.AnimationList));
-    for i := 0 to High(Animations) do
-    begin
-      Animations[i] := TAnimation.Create(Scene.AnimationList[i]);
-    end;
+    specialize UArrAppend<TAnimationShared>(
+      Animations, TAnimation.Create(Scene.AnimationList)
+    );
   finally
     FreeAndNil(Scene);
   end;
@@ -1208,7 +1209,8 @@ begin
   //TaskLoad := TaskLoad.StartTask(@TF_Load, [AssetsFile('siren/siren_anim.dae')]);
   //TaskLoad := TaskLoad.StartTask(@TF_Load, [AssetsFile('Vanguard By T. Choonyung/Vanguard By T. Choonyung.dae')]);
   //TaskLoad := TaskLoad.StartTask(@TF_Load, [AssetsFile('Vampire A Lusth/Vampire A Lusth.dae')]);
-  TaskLoad := TaskLoad.StartTask(@TF_Load, [AssetsFile('X Bot.dae')]);
+  TaskLoad := TaskLoad.StartTask(@TF_Load, [AssetsFile('Breakdance Uprock Var 1.dae')]);
+  //TaskLoad := TaskLoad.StartTask(@TF_Load, [AssetsFile('X Bot.dae')]);
   Caption := 'PasOpenGL Loading...';
   //Load(AssetsFile('siren/siren_anim.dae'));
   //Load('../Assets/skin.dae');
@@ -1329,7 +1331,7 @@ begin
   t := (GetTickCount64 - AppStartTime) * 0.001;
   for i := 0 to High(Animations) do
   begin
-    ApplyAnimation(Animations[i].Ptr, t * 3);
+    ApplyAnimation(Animations[i].Ptr, t);
   end;
 
   glViewport(0, 0, ClientWidth, ClientHeight);
