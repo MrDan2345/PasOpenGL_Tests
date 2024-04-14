@@ -155,13 +155,13 @@ public
   private
     var _Name: String;
     var _Keys: TKeyList;
-    var _Target: TNode;
+    var _Target: String;
     var _MaxTime: TUFloat;
     function FindKey(const Time: TUFloat): Int32;
   public
     property Name: String read _Name;
     property Keys: TKeyList read _Keys;
-    property Target: TNode read _Target;
+    property Target: String read _Target;
     property MaxTime: TUFloat read _MaxTime;
     function Sample(const Time: TUFloat; const Loop: Boolean = True): TUMat;
     constructor Create(
@@ -182,6 +182,24 @@ public
   destructor Destroy; override;
 end;
 type TAnimationShared = specialize TUSharedRef<TAnimation>;
+
+type TAnimationInstance = class (TURefClass)
+public
+  type TTrack = class
+  public
+    var Track: TAnimation.TTrack;
+    var Target: TNode;
+    constructor Create(const ATrack: TAnimation.TTrack; const ATarget: TNode);
+  end;
+  type TTrackList = array of TTrack;
+private
+  var _Tracks: TTrackList;
+public
+  property Tracks: TTrackList read _Tracks;
+  constructor Create(const Animation: TAnimation; const TargetNode: TNode);
+  destructor Destroy; override;
+end;
+type TAnimationInstanceShared = specialize TUSharedRef<TAnimationInstance>;
 
 type TNode = class (TURefClass)
 public
@@ -247,6 +265,7 @@ private
   var _Children: TNodeList;
   var _Attachments: TAttachmentList;
   var _Transform: TUMat;
+  var _Ids: TUStrArray;
   procedure ChildAdd(const Child: TNode); inline;
   procedure ChildRemove(const Child: TNode); inline;
   procedure AttachAdd(const Attach: TAttachment);
@@ -263,6 +282,7 @@ public
   property Attachments: TAttachmentList read _Attachments;
   property Transform: TUMat read _Transform write SetTransform;
   property LocalTransform: TUMat read GetLocalTransform write SetLocalTransform;
+  property Ids: TUStrArray read _Ids;
   constructor Create(
     const Context: TLoadingContext;
     const AParent: TNode;
@@ -274,6 +294,7 @@ public
     const NodeData: TUSceneData.TNodeInterface
   );
   procedure Setup;
+  function MatchId(const Id: String): Boolean;
 end;
 type TNodeShared = specialize TUSharedRef<TNode>;
 
@@ -288,18 +309,25 @@ public
   constructor Create(const FilePath: String);
 end;
 
-type TForm1 = class(TCommonForm)
-private
+type TScene = class (TURefClass)
+public
   var Meshes: array of TMeshShared;
   var Skins: array of TSkinShared;
   var Textures: array of TTextureShared;
   var Materials: array of TMaterialShared;
-  var Animations: array of TAnimationShared;
+  var Animation: TAnimationShared;
   var RootNode: TNodeShared;
+end;
+type TSceneShared = specialize TUSharedRef<TScene>;
+
+type TForm1 = class(TCommonForm)
+private
+  var Scene: TSceneShared;
+  var AnimInstance: TAnimationInstanceShared;
   var AppStartTime: UInt64;
-  var TaskLoad: specialize TUTask<TNodeShared>;
+  var TaskLoad: specialize TUTask<TSceneShared>;
   procedure ImageFormatToGL(const ImageFormat: TUImageDataFormat; out Format, DataType: TGLenum);
-  function TF_Load(const Args: array of const): TNodeShared;
+  function TF_Load(const Args: array of const): TSceneShared;
 protected
   function RequestDebugContext: Boolean; override;
 public
@@ -797,7 +825,7 @@ constructor TAnimation.TTrack.Create(
 );
   var i: Int32;
 begin
-  _Target := Context.NodeRemap.FindValueByKey(TrackData.Target);
+  _Target := TrackData.TargetId;
   SetLength(_Keys, Length(TrackData.Keys));
   for i := 0 to High(_Keys) do
   begin
@@ -809,6 +837,48 @@ end;
 
 destructor TAnimation.TTrack.Destroy;
 begin
+  inherited Destroy;
+end;
+
+constructor TAnimationInstance.TTrack.Create(
+  const ATrack: TAnimation.TTrack;
+  const ATarget: TNode
+);
+begin
+  Track := ATrack;
+  Target := ATarget;
+end;
+
+constructor TAnimationInstance.Create(
+  const Animation: TAnimation;
+  const TargetNode: TNode
+);
+  function FindNode(const Node: TNode; const Id: String): TNode;
+    var i: Int32;
+  begin
+    if Node.MatchId(Id) then Exit(Node);
+    for i := 0 to High(Node.Children) do
+    begin
+      Result := FindNode(Node.Children[i], Id);
+      if Assigned(Result) then Exit;
+    end;
+    Result := nil;
+  end;
+  var i: Int32;
+begin
+  SetLength(_Tracks, Length(Animation.Tracks));
+  for i := 0 to High(_Tracks) do
+  begin
+    _Tracks[i] := TTrack.Create(
+      Animation.Tracks[i],
+      FindNode(TargetNode, Animation.Tracks[i].Target)
+    );
+  end;
+end;
+
+destructor TAnimationInstance.Destroy;
+begin
+  specialize UArrClear<TTrack>(_Tracks);
   inherited Destroy;
 end;
 
@@ -1120,6 +1190,7 @@ constructor TNode.Create(
   var i: Int32;
 begin
   _Name := NodeData.Name;
+  _Ids := NodeData.Ids;
   Parent := AParent;
   Context.NodeRemap.Add(NodeData, Self);
   _Transform := NodeData.Transform;
@@ -1187,6 +1258,18 @@ begin
   end;
 end;
 
+function TNode.MatchId(const Id: String): Boolean;
+  var i: Int32;
+  var IdLc: String;
+begin
+  IdLc := LowerCase(Id);
+  for i := 0 to High(_Ids) do
+  begin
+    if IdLc = _Ids[i] then Exit(True);
+  end;
+  Result := False;
+end;
+
 constructor TLoadingContext.Create(const FilePath: String);
 begin
   LoadDir := ExtractFileDir(FilePath);
@@ -1208,10 +1291,10 @@ begin
   end;
 end;
 
-function TForm1.TF_Load(const Args: array of const): TNodeShared;
+function TForm1.TF_Load(const Args: array of const): TSceneShared;
   var Context: TLoadingContext;
   var i: Integer;
-  var Scene: TUSceneDataDAE;
+  var Data: TUSceneDataDAE;
   var FileName: String;
 begin
   if Length(Args) < 1 then Exit(nil);
@@ -1219,40 +1302,39 @@ begin
   if not FileExists(FileName) then Exit(nil);
   MakeCurrentShared;
   Context := TLoadingContext.Create(FileName);
-  Scene := TUSceneDataDAE.Create([sdo_optimize], sdu_y);
+  Data := TUSceneDataDAE.Create([sdo_optimize], sdu_y);
+  Result := TScene.Create;
   try
-    Scene.Load(FileName);
-    SetLength(Textures, Length(Scene.ImageList));
-    for i := 0 to High(Textures) do
+    Data.Load(FileName);
+    SetLength(Result.Ptr.Textures, Length(Data.ImageList));
+    for i := 0 to High(Result.Ptr.Textures) do
     begin
-      Textures[i] := TTexture.Create(Context, Scene.ImageList[i]);
-      Context.TextureRemap.Add(Scene.ImageList[i], Textures[i]);
+      Result.Ptr.Textures[i] := TTexture.Create(Context, Data.ImageList[i]);
+      Context.TextureRemap.Add(Data.ImageList[i], Result.Ptr.Textures[i]);
     end;
-    SetLength(Meshes, Length(Scene.MeshList));
-    for i := 0 to High(Meshes) do
+    SetLength(Result.Ptr.Meshes, Length(Data.MeshList));
+    for i := 0 to High(Result.Ptr.Meshes) do
     begin
-      Meshes[i] := TMesh.Create(Scene.MeshList[i]);
-      Context.MeshRemap.Add(Scene.MeshList[i], Meshes[i]);
+      Result.Ptr.Meshes[i] := TMesh.Create(Data.MeshList[i]);
+      Context.MeshRemap.Add(Data.MeshList[i], Result.Ptr.Meshes[i]);
     end;
-    SetLength(Skins, Length(Scene.SkinList));
-    for i := 0 to High(Skins) do
+    SetLength(Result.Ptr.Skins, Length(Data.SkinList));
+    for i := 0 to High(Result.Ptr.Skins) do
     begin
-      Skins[i] := TSkin.Create(Context, Scene.SkinList[i]);
-      Context.SkinRemap.Add(Scene.SkinList[i], Skins[i]);
+      Result.Ptr.Skins[i] := TSkin.Create(Context, Data.SkinList[i]);
+      Context.SkinRemap.Add(Data.SkinList[i], Result.Ptr.Skins[i]);
     end;
-    SetLength(Materials, Length(Scene.MaterialList));
-    for i := 0 to High(Materials) do
+    SetLength(Result.Ptr.Materials, Length(Data.MaterialList));
+    for i := 0 to High(Result.Ptr.Materials) do
     begin
-      Materials[i] := TMaterial.Create(Context, Scene.MaterialList[i]);
-      Context.MaterialRemap.Add(Scene.MaterialList[i], Materials[i]);
+      Result.Ptr.Materials[i] := TMaterial.Create(Context, Data.MaterialList[i]);
+      Context.MaterialRemap.Add(Data.MaterialList[i], Result.Ptr.Materials[i]);
     end;
-    Result := TNode.Create(Context, nil, Scene.RootNode);
-    Result.Ptr.SetupAttachments(Context, Scene.RootNode);
-    specialize UArrAppend<TAnimationShared>(
-      Animations, TAnimation.Create(Context, Scene.AnimationList)
-    );
+    Result.Ptr.RootNode := TNode.Create(Context, nil, Data.RootNode);
+    Result.Ptr.RootNode.Ptr.SetupAttachments(Context, Data.RootNode);
+    Result.Ptr.Animation := TAnimation.Create(Context, Data.AnimationList);
   finally
-    FreeAndNil(Scene);
+    FreeAndNil(Data);
     FreeAndNil(Context);
   end;
   glFlush();
@@ -1280,12 +1362,6 @@ end;
 
 procedure TForm1.Finalize;
 begin
-  RootNode := nil;
-  Skins := nil;
-  Meshes := nil;
-  Textures := nil;
-  Materials := nil;
-  Animations := nil;
 end;
 
 procedure TForm1.Tick;
@@ -1363,19 +1439,18 @@ procedure TForm1.Tick;
       DrawNode(Node.Children[i]);
     end;
   end;
-  procedure ApplyAnimation(const Animation: TAnimation; const Time: TUFloat);
+  procedure ApplyAnimation(const Animation: TAnimationInstance; const Time: TUFloat);
     var i: Int32;
     var Xf: TUMat;
   begin
     for i := 0 to High(Animation.Tracks) do
     begin
-      Xf := Animation.Tracks[i].Sample(Time);
+      Xf := Animation.Tracks[i].Track.Sample(Time);
       Xf := Xf.Norm;
       Animation.Tracks[i].Target.LocalTransform := Xf;
     end;
   end;
   var t: TUFloat;
-  var i: Int32;
 begin
   W := TUMat.Identity;
   W := TUMat.Scaling(0.05);
@@ -1385,9 +1460,9 @@ begin
   WVP := W * V * P;
 
   t := (GetTickCount64 - AppStartTime) * 0.001;
-  for i := 0 to High(Animations) do
+  if AnimInstance.IsValid then
   begin
-    ApplyAnimation(Animations[i].Ptr, t);
+    ApplyAnimation(AnimInstance.Ptr, t);
   end;
 
   glViewport(0, 0, ClientWidth, ClientHeight);
@@ -1396,16 +1471,23 @@ begin
   glClearDepth(1);
   glClear(GL_COLOR_BUFFER_BIT or GL_DEPTH_BUFFER_BIT);
 
-  if RootNode.IsValid then
+  if Scene.IsValid then
   begin
-    DrawNode(RootNode.Ptr);
+    DrawNode(Scene.Ptr.RootNode.Ptr);
     glBindVertexArray(0);
   end
   else if TaskLoad.IsComplete then
   begin
-    RootNode := TaskLoad.TaskResult;
+    Scene := TaskLoad.TaskResult;
     TaskLoad.Reset;
-    RootNode.Ptr.Setup;
+    Scene.Ptr.RootNode.Ptr.Setup;
+    if Scene.Ptr.Animation.IsValid then
+    begin
+      AnimInstance := TAnimationInstance.Create(
+        Scene.Ptr.Animation.Ptr,
+        Scene.Ptr.RootNode.Ptr
+      );
+    end;
     PrintScene;
     Caption := 'PasOpenGL';
   end;
@@ -1426,7 +1508,7 @@ procedure TForm1.PrintScene;
     end;
   end;
 begin
-  PrintNode(RootNode.Ptr);
+  PrintNode(Scene.Ptr.RootNode.Ptr);
 end;
 
 end.
