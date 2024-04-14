@@ -171,8 +171,10 @@ public
   end;
   type TTrackList = array of TTrack;
 private
+  var _Retarget: String;
   var _Tracks: TTrackList;
 public
+  property Retarget: String read _Retarget;
   property Tracks: TTrackList read _Tracks;
   constructor Create(
     const AnimationData: TUSceneData.TAnimationInterfaceList
@@ -194,7 +196,11 @@ private
   var _Tracks: TTrackList;
 public
   property Tracks: TTrackList read _Tracks;
-  constructor Create(const Animation: TAnimation; const TargetNode: TNode);
+  constructor Create(
+    const Animation: TAnimation;
+    const TargetNode: TNode;
+    const Retarget: String = ''
+  );
   destructor Destroy; override;
 end;
 type TAnimationInstanceShared = specialize TUSharedRef<TAnimationInstance>;
@@ -334,6 +340,7 @@ public
   procedure Initialize; override;
   procedure Finalize; override;
   procedure Tick; override;
+  procedure SetupScenes;
   procedure PrintScene;
 end;
 
@@ -374,7 +381,7 @@ class function TShader.AutoShader(
   end;
   var Hash: UInt64;
   var Attrib: TUVertexAttribute;
-  var vs, ps, Inputs, Outputs, AttName, AttSize: String;
+  var vs, ps, Inputs, Outputs, AttName, AttSize, AttType: String;
   var i, BoneCount, AttribIndex: Int32;
 begin
   Hash := MakeHash;
@@ -388,19 +395,22 @@ begin
   begin
     AttName := AttributeName(Attrib);
     AttSize := IntToStr(Attrib.DataCount);
-    Inputs += 'layout (location = ' + IntToStr(AttribIndex) + ') in vec' + AttSize + ' in_' + AttName + ';'#$D#$A;
+    if Attrib.DataCount = 1 then AttType := 'float' else AttType := 'vec' + AttSize;
+    Inputs += 'layout (location = ' + IntToStr(AttribIndex) + ') in ' + AttType + ' in_' + AttName + ';'#$D#$A;
     if Attrib.Semantic <> as_position then
     begin
-      Outputs += 'layout (location = ' + IntToStr(AttribIndex) + ') out vec' + AttSize + ' out_' + AttName + ';'#$D#$A;
+      Outputs += 'layout (location = ' + IntToStr(AttribIndex) + ') out ' + AttType + ' out_' + AttName + ';'#$D#$A;
     end;
     Inc(AttribIndex);
   end;
   if Assigned(SkinInfo) then
   begin
     AttSize := IntToStr(SkinInfo^.BoneWeights);
-    Inputs += 'layout (location = ' + IntToStr(AttribIndex) + ') in uvec' + AttSize + ' in_bone_index;'#$D#$A;
+    if SkinInfo^.BoneWeights = 1 then AttType := 'uint' else AttType := 'uvec' + AttSize;
+    Inputs += 'layout (location = ' + IntToStr(AttribIndex) + ') in ' + AttType + ' in_bone_index;'#$D#$A;
     Inc(AttribIndex);
-    Inputs += 'layout (location = ' + IntToStr(AttribIndex) + ') in vec' + AttSize + ' in_bone_weight;'#$D#$A;
+    if SkinInfo^.BoneWeights = 1 then AttType := 'float' else AttType := 'vec' + AttSize;
+    Inputs += 'layout (location = ' + IntToStr(AttribIndex) + ') in ' + AttType + ' in_bone_weight;'#$D#$A;
     Inc(AttribIndex);
   end;
   vs += Inputs + Outputs;
@@ -416,7 +426,8 @@ begin
     vs += '  mat4x4 S = ('#$D#$A;
     for i := 0 to SkinInfo^.BoneWeights - 1 do
     begin
-      vs += '    (Bone[in_bone_index[' + IntToStr(i) + ']] * in_bone_weight[' + IntToStr(i) + '])';
+      if SkinInfo^.BoneWeights = 1 then AttType := '' else AttType := '[' + IntToStr(i) + ']';
+      vs += '    (Bone[in_bone_index' + AttType + '] * in_bone_weight' + AttType + ')';
       if i < SkinInfo^.BoneWeights - 1 then vs += ' + ';
       vs += #$D#$A;
     end;
@@ -766,6 +777,19 @@ begin
       _Tracks, TTrack.Create(AnimationData[i].Tracks[j])
     );
   end;
+  if Length(_Tracks) < 1 then Exit;
+  _Retarget := _Tracks[0].Target;
+  for i := 1 to High(_Tracks) do
+  begin
+    for j := 1 to UMin(Length(_Retarget), Length(_Tracks[i].Target)) do
+    begin
+      if _Retarget[j] <> _Tracks[i].Target[j] then Break;
+    end;
+    if j <> Length(_Retarget) then
+    begin
+      SetLength(_Retarget, j - 1);
+    end;
+  end;
 end;
 
 destructor TAnimation.Destroy;
@@ -849,11 +873,18 @@ end;
 
 constructor TAnimationInstance.Create(
   const Animation: TAnimation;
-  const TargetNode: TNode
+  const TargetNode: TNode;
+  const Retarget: String
 );
   function FindNode(const Node: TNode; const Id: String): TNode;
     var i: Int32;
+    var IdRet: String;
   begin
+    if Length(Retarget) > 0 then
+    begin
+      IdRet := Id.Replace(Animation.Retarget, Retarget);
+      if Node.MatchId(IdRet) then Exit(Node);
+    end;
     if Node.MatchId(Id) then Exit(Node);
     for i := 0 to High(Node.Children) do
     begin
@@ -1362,13 +1393,20 @@ begin
   //TaskLoad := TaskLoad.StartTask(@TF_Load, [AssetsFile('siren/siren_anim.dae')]);
   //TaskLoad := TaskLoad.StartTask(@TF_Load, [AssetsFile('Vanguard By T. Choonyung/Vanguard By T. Choonyung.dae')]);
   //TaskLoad := TaskLoad.StartTask(@TF_Load, [AssetsFile('Vampire A Lusth/Vampire A Lusth.dae')]);
-  //first file provides the scene, second provides animation (must be compatible with the scene)
-  TaskLoad := TaskLoad.StartTask(@TF_Load, [
-    AssetsFile('X Bot.dae'),
-    AssetsFile('Breakdance Uprock Var 1 Anim.dae')
-    //AssetsFile('Rumba Dancing Anim.dae')
-  ]);
   //TaskLoad := TaskLoad.StartTask(@TF_Load, [AssetsFile('X Bot.dae')]);
+  //first file provides the scene, second provides animation (must be compatible with the scene)
+  //{
+  TaskLoad := TaskLoad.StartTask(@TF_Load, [
+    //AssetsFile('Vampire A Lusth/Vampire A Lusth.dae'),
+    AssetsFile('Vanguard By T. Choonyung/Vanguard By T. Choonyung.dae'),
+    //AssetsFile('Ch15_nonPBR/Ch15_nonPBR.dae'),
+    //AssetsFile('X Bot.dae'),
+    //AssetsFile('Y Bot.dae'),
+    //AssetsFile('Breakdance Uprock Var 1 Anim.dae')
+    //AssetsFile('Arm Stretching Anim.dae')
+    AssetsFile('Rumba Dancing Anim.dae')
+  ]);
+  //}
   Caption := 'PasOpenGL Loading...';
   //Load(AssetsFile('siren/siren_anim.dae'));
   //Load('../Assets/skin.dae');
@@ -1485,21 +1523,7 @@ begin
   begin
     Scenes := TaskLoad.TaskResult;
     TaskLoad.Reset;
-    for i := 0 to High(Scenes) do
-    begin
-      Scenes[i].Ptr.RootNode.Ptr.Setup;
-      if RootNode.IsValid then Continue;
-      RootNode := Scenes[i].Ptr.RootNode;
-    end;
-    for i := High(Scenes) downto 0 do
-    begin
-      if not Scenes[i].Ptr.Animation.IsValid then Continue;
-      AnimInstance := TAnimationInstance.Create(
-        Scenes[i].Ptr.Animation.Ptr,
-        RootNode.Ptr
-      );
-      Break;
-    end;
+    SetupScenes;
     PrintScene;
     Caption := 'PasOpenGL';
   end;
@@ -1512,6 +1536,40 @@ begin
   end;
   DrawNode(RootNode.Ptr);
   glBindVertexArray(0);
+end;
+
+procedure TForm1.SetupScenes;
+  var i: Int32;
+  var RootScene: TScene;
+  var Retarget: String;
+begin
+  for i := 0 to High(Scenes) do
+  begin
+    Scenes[i].Ptr.RootNode.Ptr.Setup;
+    if RootNode.IsValid then Continue;
+    RootScene := Scenes[i].Ptr;
+    RootNode := RootScene.RootNode;
+  end;
+  for i := High(Scenes) downto 0 do
+  begin
+    if not Scenes[i].Ptr.Animation.IsValid then Continue;
+    if (RootScene <> Scenes[i].Ptr)
+    and RootScene.Animation.IsValid
+    and (RootScene.Animation.Ptr.Retarget <> Scenes[i].Ptr.Animation.Ptr.Retarget) then
+    begin
+      Retarget := RootScene.Animation.Ptr.Retarget;
+    end
+    else
+    begin
+      Retarget := '';
+    end;
+    AnimInstance := TAnimationInstance.Create(
+      Scenes[i].Ptr.Animation.Ptr,
+      RootNode.Ptr,
+      Retarget
+    );
+    Break;
+  end;
 end;
 
 procedure TForm1.PrintScene;
