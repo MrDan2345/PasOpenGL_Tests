@@ -1002,7 +1002,6 @@ begin
   for i := 0 to High(_Pose) do
   begin
     _JointBindings[i] := Context.NodeRemap.FindValueByKey(AttachData.JointBindings[i]);
-    WriteLn(_JointBindings[i].Name);
   end;
   UpdatePose;
 end;
@@ -1295,7 +1294,9 @@ function TForm1.TF_Load(const Args: array of const): TSceneList;
   var Data: TUSceneDataDAE;
   var FileName: String;
   var Scene: TScene;
+  var Timer, TimerData: TUTimer;
 begin
+  Timer.Start({$I %CURRENTROUTINE%});
   MakeCurrentShared;
   Result := nil;
   for f := 0 to High(Args) do
@@ -1307,10 +1308,11 @@ begin
       Continue;
     end;
     Context := TLoadingContext.Create(FileName);
-    Data := TUSceneDataDAE.Create([sdo_optimize], sdu_y);
+    Data := TUSceneDataDAE.Create([{sdo_optimize}], sdu_y);
     Scene := TScene.Create;
     try
       Data.Load(FileName);
+      TimerData.Start('LoadData ' + FileName);
       SetLength(Scene.Textures, Length(Data.ImageList));
       for i := 0 to High(Scene.Textures) do
       begin
@@ -1339,6 +1341,7 @@ begin
       Scene.RootNode.Ptr.SetupAttachments(Context, Data.RootNode);
       Scene.Animation := TAnimation.Create(Data.AnimationList);
       specialize UArrAppend<TSceneShared>(Result, Scene);
+      TimerData.Stop;
     finally
       FreeAndNil(Data);
       FreeAndNil(Context);
