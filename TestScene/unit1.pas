@@ -894,13 +894,15 @@ constructor TAnimationInstance.Create(
     Result := nil;
   end;
   var i: Int32;
+  var Node: TNode;
 begin
-  SetLength(_Tracks, Length(Animation.Tracks));
-  for i := 0 to High(_Tracks) do
+  for i := 0 to High(Animation.Tracks) do
   begin
-    _Tracks[i] := TTrack.Create(
-      Animation.Tracks[i],
-      FindNode(TargetNode, Animation.Tracks[i].Target)
+    Node := FindNode(TargetNode, Animation.Tracks[i].Target);
+    if not Assigned(Node) then Continue;
+    specialize UArrAppend<TTrack>(
+      _Tracks,
+      TTrack.Create(Animation.Tracks[i], Node)
     );
   end;
 end;
@@ -1399,6 +1401,7 @@ begin
   TaskLoad := TaskLoad.StartTask(@TF_Load, [
     //AssetsFile('Vampire A Lusth/Vampire A Lusth.dae'),
     AssetsFile('Vanguard By T. Choonyung/Vanguard By T. Choonyung.dae'),
+    //AssetsFile('Castle Guard 02/Castle Guard 02.dae'),
     //AssetsFile('Ch15_nonPBR/Ch15_nonPBR.dae'),
     //AssetsFile('X Bot.dae'),
     //AssetsFile('Y Bot.dae'),
