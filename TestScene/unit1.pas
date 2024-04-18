@@ -202,8 +202,44 @@ public
     const Retarget: String = ''
   );
   destructor Destroy; override;
+  procedure Apply(const Time: TUFloat);
 end;
 type TAnimationInstanceShared = specialize TUSharedRef<TAnimationInstance>;
+
+type TAnimationBlend = class (TURefClass)
+private
+  type TBlendable = record
+    Instance: TAnimationInstanceShared;
+    Remap: array of Int32;
+    Weight: TUFloat;
+    Time: TUFloat;
+  end;
+  type TBlendableList = array of TBlendable;
+  type TBlendableTarget = record
+    Node: TNode;
+    Weight: TUFloat;
+    Xf: TUMat;
+  end;
+  var _Blendables: TBlendableList;
+  var _Targets: array of TBlendableTarget;
+  function FindBlendable(const Animation: TAnimationInstance): Int32;
+  function GetBlendableCount: Int32;
+public
+  property BlendableCount: Int32 read GetBlendableCount;
+  constructor Create(const Animations: array of TAnimationInstanceShared);
+  function GetWeight(const BlendableIndex: Int32): TUFloat;
+  function GetWeight(const Animation: TAnimationInstance): TUFloat;
+  procedure SetWeight(const BlendableIndex: Int32; const Value: TUFloat);
+  procedure SetWeight(const Animation: TAnimationInstance; const Value: TUFloat);
+  function GetTime(const BlendableIndex: Int32): TUFloat;
+  function GetTime(const Animation: TAnimationInstance): TUFloat;
+  procedure SetTime(const BlendableIndex: Int32; const Value: TUFloat);
+  procedure SetTime(const Animation: TAnimationInstance; const Value: TUFloat);
+  procedure SetTime(const Value: TUFloat);
+  procedure Apply;
+  procedure Apply(const Time: TUFloat);
+end;
+type TAnimationBlendShared = specialize TUSharedRef<TAnimationBlend>;
 
 type TNode = class (TURefClass)
 public
@@ -330,6 +366,7 @@ private
   var Scenes: TSceneList;
   var RootNode: TNodeShared;
   var AnimInstance: TAnimationInstanceShared;
+  var AnimBlend: TAnimationBlendShared;
   var AppStartTime: UInt64;
   var TaskLoad: specialize TUTask<TSceneList>;
   procedure ImageFormatToGL(const ImageFormat: TUImageDataFormat; out Format, DataType: TGLenum);
@@ -871,6 +908,161 @@ begin
   Target := ATarget;
 end;
 
+function TAnimationBlend.FindBlendable(const Animation: TAnimationInstance): Int32;
+  var i: Int32;
+begin
+  for i := 0 to High(_Blendables) do
+  if _Blendables[i].Instance.Ptr = Animation then Exit(i);
+  Result := -1;
+end;
+
+function TAnimationBlend.GetBlendableCount: Int32;
+begin
+  Result := Length(_Blendables);
+end;
+
+constructor TAnimationBlend.Create(
+  const Animations: array of TAnimationInstanceShared
+);
+  function AddTarget(const Node: TNode): Int32;
+    var i: Int32;
+    var t: TBlendableTarget;
+  begin
+    for i := 0 to High(_Targets) do
+    if _Targets[i].Node = Node then Exit(i);
+    t.Node := Node;
+    t.Weight := 0;
+    t.Xf := TUMat.Zero;
+    Result := specialize UArrAppend<TBlendableTarget>(_Targets, t);
+  end;
+  var i, j, r: Int32;
+begin
+  SetLength(_Blendables, Length(Animations));
+  for i := 0 to High(_Blendables) do
+  begin
+    _Blendables[i].Instance := Animations[i];
+    if i = 0 then _Blendables[i].Weight := 1
+    else _Blendables[i].Weight := 0;
+    SetLength(_Blendables[i].Remap, Length(Animations[i].Ptr.Tracks));
+  end;
+  if Length(_Blendables) < 1 then Exit;
+  SetLength(_Targets, Length(_Blendables[0].Remap));
+  for j := 0 to High(_Blendables[0].Instance.Ptr.Tracks) do
+  begin
+    _Targets[j].Node := _Blendables[0].Instance.Ptr.Tracks[j].Target;
+    _Targets[j].Weight := 0;
+    _Targets[j].Xf := TUMat.Zero;
+    _Blendables[0].Remap[j] := j;
+  end;
+  for i := 1 to High(_Blendables) do
+  begin
+    for j := 0 to High(_Blendables[i].Instance.Ptr.Tracks) do
+    begin
+      _Blendables[i].Remap[j] := AddTarget(
+        _Blendables[i].Instance.Ptr.Tracks[j].Target
+      );
+    end;
+  end;
+end;
+
+function TAnimationBlend.GetWeight(const BlendableIndex: Int32): TUFloat;
+begin
+  Result := _Blendables[BlendableIndex].Weight;
+end;
+
+function TAnimationBlend.GetWeight(const Animation: TAnimationInstance): TUFloat;
+  var i: Int32;
+begin
+  i := FindBlendable(Animation);
+  if i = -1 then Exit(0);
+  Result := _Blendables[i].Weight;
+end;
+
+procedure TAnimationBlend.SetWeight(const BlendableIndex: Int32; const Value: TUFloat);
+begin
+  _Blendables[BlendableIndex].Weight := Value;
+end;
+
+procedure TAnimationBlend.SetWeight(const Animation: TAnimationInstance; const Value: TUFloat);
+  var i: Int32;
+begin
+  i := FindBlendable(Animation);
+  if i = -1 then Exit;
+  _Blendables[i].Weight := Value;
+end;
+
+function TAnimationBlend.GetTime(const BlendableIndex: Int32): TUFloat;
+begin
+  Result := _Blendables[BlendableIndex].Time;
+end;
+
+function TAnimationBlend.GetTime(const Animation: TAnimationInstance): TUFloat;
+  var i: Int32;
+begin
+  i := FindBlendable(Animation);
+  if i = -1 then Exit(0);
+  Result := _Blendables[i].Time;
+end;
+
+procedure TAnimationBlend.SetTime(const BlendableIndex: Int32; const Value: TUFloat);
+begin
+  _Blendables[BlendableIndex].Time := Value;
+end;
+
+procedure TAnimationBlend.SetTime(const Animation: TAnimationInstance; const Value: TUFloat);
+  var i: Int32;
+begin
+  i := FindBlendable(Animation);
+  if i = -1 then Exit;
+  _Blendables[i].Time := Value;
+end;
+
+procedure TAnimationBlend.SetTime(const Value: TUFloat);
+  var i: Int32;
+begin
+  for i := 0 to High(_Blendables) do
+  begin
+    _Blendables[i].Time := Value;
+  end;
+end;
+
+procedure TAnimationBlend.Apply;
+  var i, j, r: Int32;
+  var tw: TUFloat;
+  var Xf: TUMat;
+begin
+  for i := 0 to High(_Targets) do
+  begin
+    _Targets[i].Xf := TUMat.Zero;
+    _Targets[i].Weight := 0;
+  end;
+  for i := 0 to High(_Blendables) do
+  begin
+    if _Blendables[i].Weight < UEps then Continue;
+    for j := 0 to High(_Blendables[i].Instance.Ptr.Tracks) do
+    begin
+      Xf := _Blendables[i].Instance.Ptr.Tracks[j].Track.Sample(_Blendables[i].Time);
+      Xf := Xf.Norm;
+      r := _Blendables[i].Remap[j];
+      _Targets[r].Xf := _Targets[r].Xf + (Xf * _Blendables[i].Weight);
+      _Targets[r].Weight := _Targets[r].Weight + _Blendables[i].Weight;
+    end;
+  end;
+  for i := 0 to High(_Targets) do
+  begin
+    if _Targets[i].Weight < UEps then Continue;
+    tw := 1 / _Targets[i].Weight;
+    Xf := (_Targets[i].Xf * tw).Norm;
+    _Targets[i].Node.LocalTransform := Xf;
+  end;
+end;
+
+procedure TAnimationBlend.Apply(const Time: TUFloat);
+begin
+  SetTime(Time);
+  Apply;
+end;
+
 constructor TAnimationInstance.Create(
   const Animation: TAnimation;
   const TargetNode: TNode;
@@ -911,6 +1103,18 @@ destructor TAnimationInstance.Destroy;
 begin
   specialize UArrClear<TTrack>(_Tracks);
   inherited Destroy;
+end;
+
+procedure TAnimationInstance.Apply(const Time: TUFloat);
+  var i: Int32;
+  var Xf: TUMat;
+begin
+  for i := 0 to High(_Tracks) do
+  begin
+    Xf := _Tracks[i].Track.Sample(Time);
+    Xf := Xf.Norm;
+    _Tracks[i].Target.LocalTransform := Xf;
+  end;
 end;
 
 procedure TNode.TAttachment.SetNode(const Value: TNode);
@@ -1405,7 +1609,7 @@ begin
     //AssetsFile('Ch15_nonPBR/Ch15_nonPBR.dae'),
     //AssetsFile('X Bot.dae'),
     //AssetsFile('Y Bot.dae'),
-    //AssetsFile('Breakdance Uprock Var 1 Anim.dae')
+    AssetsFile('Breakdance Uprock Var 1 Anim.dae'),
     //AssetsFile('Arm Stretching Anim.dae')
     AssetsFile('Rumba Dancing Anim.dae')
   ]);
@@ -1495,18 +1699,7 @@ procedure TForm1.Tick;
       DrawNode(Node.Children[i]);
     end;
   end;
-  procedure ApplyAnimation(const Animation: TAnimationInstance; const Time: TUFloat);
-    var i: Int32;
-    var Xf: TUMat;
-  begin
-    for i := 0 to High(Animation.Tracks) do
-    begin
-      Xf := Animation.Tracks[i].Track.Sample(Time);
-      Xf := Xf.Norm;
-      Animation.Tracks[i].Target.LocalTransform := Xf;
-    end;
-  end;
-  var t: TUFloat;
+  var t, f0, f1, f, bt: TUFloat;
   var i: Int32;
 begin
   W := TUMat.Identity;
@@ -1532,10 +1725,26 @@ begin
   end;
 
   if not RootNode.IsValid then Exit;
-  if AnimInstance.IsValid then
+  t := (GetTickCount64 - AppStartTime) * 0.001;
+  if AnimBlend.IsValid then
   begin
-    t := (GetTickCount64 - AppStartTime) * 0.001;
-    ApplyAnimation(AnimInstance.Ptr, t);
+    //AnimBlend.Ptr.SetWeight(0, 0.2);
+    //AnimBlend.Ptr.SetWeight(1, 0.8);
+    bt := t * 0.1;
+    f0 := Trunc(bt) mod AnimBlend.Ptr.BlendableCount;
+    f1 := (f0 + 1) mod AnimBlend.Ptr.BlendableCount;
+    f := Frac(bt);
+    for i := 0 to AnimBlend.Ptr.BlendableCount - 1 do
+    begin
+      if i = f0 then AnimBlend.Ptr.SetWeight(i, 1 - f)
+      else if i = f1 then AnimBlend.Ptr.SetWeight(i, f)
+      else AnimBlend.Ptr.SetWeight(i, 0);
+    end;
+    AnimBlend.Ptr.Apply(t);
+  end
+  else if AnimInstance.IsValid then
+  begin
+    AnimInstance.Ptr.Apply(t);
   end;
   DrawNode(RootNode.Ptr);
   glBindVertexArray(0);
@@ -1545,6 +1754,7 @@ procedure TForm1.SetupScenes;
   var i: Int32;
   var RootScene: TScene;
   var Retarget: String;
+  var BlendInstances: array of TAnimationInstanceShared;
 begin
   for i := 0 to High(Scenes) do
   begin
@@ -1572,6 +1782,24 @@ begin
       Retarget
     );
     Break;
+  end;
+  if Length(Scenes) < 3 then Exit;
+  BlendInstances := nil;
+  for i := 1 to High(Scenes) do
+  begin
+    if not Scenes[i].Ptr.Animation.IsValid then Continue;
+    Retarget := RootScene.Animation.Ptr.Retarget;
+    specialize UArrAppend<TAnimationInstanceShared>(
+      BlendInstances, TAnimationInstance.Create(
+        Scenes[i].Ptr.Animation.Ptr, RootNode.Ptr, Retarget
+      )
+    );
+  end;
+  if Length(BlendInstances) < 2 then Exit;
+  AnimBlend := TAnimationBlend.Create(BlendInstances);
+  for i := 0 to High(BlendInstances) do
+  begin
+    AnimBlend.Ptr.SetWeight(BlendInstances[i].Ptr, 1);
   end;
 end;
 
