@@ -1610,7 +1610,7 @@ begin
     //AssetsFile('X Bot.dae'),
     //AssetsFile('Y Bot.dae'),
     AssetsFile('Breakdance Uprock Var 1 Anim.dae'),
-    //AssetsFile('Arm Stretching Anim.dae')
+    AssetsFile('Arm Stretching Anim.dae'),
     AssetsFile('Rumba Dancing Anim.dae')
   ]);
   //}
@@ -1728,12 +1728,10 @@ begin
   t := (GetTickCount64 - AppStartTime) * 0.001;
   if AnimBlend.IsValid then
   begin
-    //AnimBlend.Ptr.SetWeight(0, 0.2);
-    //AnimBlend.Ptr.SetWeight(1, 0.8);
     bt := t * 0.1;
     f0 := Trunc(bt) mod AnimBlend.Ptr.BlendableCount;
     f1 := (f0 + 1) mod AnimBlend.Ptr.BlendableCount;
-    f := Frac(bt);
+    f := Sin(ULerp(-UHalfPi, UHalfPi, Frac(bt))) * 0.5 + 0.5;
     for i := 0 to AnimBlend.Ptr.BlendableCount - 1 do
     begin
       if i = f0 then AnimBlend.Ptr.SetWeight(i, 1 - f)
