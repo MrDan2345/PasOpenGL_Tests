@@ -1704,7 +1704,7 @@ procedure TForm1.Tick;
 begin
   W := TUMat.Identity;
   W := TUMat.Scaling(0.05);
-  W := W * TUMat.RotationY(((GetTickCount64 mod 4000) / 4000) * UTwoPi);
+  W := W * TUMat.RotationY(((GetTickCount64 mod 6000) / 6000) * UTwoPi);
   v := TUMat.View(TUVec3.Make(10, 10, 10), TUVec3.Make(0, 5, 0), TUVec3.Make(0, 1, 0));
   P := TUMat.Proj(UPi * 0.3, ClientWidth / ClientHeight, 0.1, 100);
   WVP := W * V * P;
