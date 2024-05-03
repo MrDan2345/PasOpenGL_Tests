@@ -148,7 +148,7 @@ public
   public
     type TKey = record
       var Time: TUFloat;
-      var Value: TUMat;
+      var Value: TUTransform;
       var Interpolation: TUSceneData.TAnimationInterface.TKeyInterpolation;
     end;
     type TKeyList = array of TKey;
@@ -163,7 +163,7 @@ public
     property Keys: TKeyList read _Keys;
     property Target: String read _Target;
     property MaxTime: TUFloat read _MaxTime;
-    function Sample(const Time: TUFloat; const Loop: Boolean = True): TUMat;
+    function Sample(const Time: TUFloat; const Loop: Boolean = True): TUTransform;
     constructor Create(
       const TrackData: TUSceneData.TAnimationInterface.TTrack
     );
@@ -218,7 +218,7 @@ private
   type TBlendableTarget = record
     Node: TNode;
     Weight: TUFloat;
-    Xf: TUMat;
+    Xf: TUTransform;
   end;
   var _Blendables: TBlendableList;
   var _Targets: array of TBlendableTarget;
@@ -849,7 +849,7 @@ begin
   Result := l;
 end;
 
-function TAnimation.TTrack.Sample(const Time: TUFloat; const Loop: Boolean): TUMat;
+function TAnimation.TTrack.Sample(const Time: TUFloat; const Loop: Boolean): TUTransform;
   var k0, k1: UInt32;
   var t: TUFloat;
 begin
@@ -873,8 +873,8 @@ begin
     begin
       k1 := (k0 + 1) mod Length(_Keys);
       if k1 < k0 then USwap(k0, k1);
-      t := (t - _Keys[k0].Time) / (_Keys[k1].Time - _Keys[k0].Time);
-      Exit(ULerp(_Keys[k0].Value, _Keys[k1].Value, t));
+      t := UClamp((t - _Keys[k0].Time) / (_Keys[k1].Time - _Keys[k0].Time), 0, 1);
+      Result := TUTransform.Interpolate(_Keys[k0].Value, _Keys[k1].Value, t);
     end;
   end;
 end;
@@ -1028,12 +1028,12 @@ end;
 
 procedure TAnimationBlend.Apply;
   var i, j, r: Int32;
-  var tw: TUFloat;
-  var Xf: TUMat;
+  var w, tw: TUFloat;
+  var Xf0, Xf1: TUTransform;
 begin
   for i := 0 to High(_Targets) do
   begin
-    _Targets[i].Xf := TUMat.Zero;
+    _Targets[i].Xf := TUTransform.Identity;
     _Targets[i].Weight := 0;
   end;
   for i := 0 to High(_Blendables) do
@@ -1041,19 +1041,28 @@ begin
     if _Blendables[i].Weight < UEps then Continue;
     for j := 0 to High(_Blendables[i].Instance.Ptr.Tracks) do
     begin
-      Xf := _Blendables[i].Instance.Ptr.Tracks[j].Track.Sample(_Blendables[i].Time);
-      Xf := Xf.Norm;
+      Xf0 := _Blendables[i].Instance.Ptr.Tracks[j].Track.Sample(_Blendables[i].Time);
       r := _Blendables[i].Remap[j];
-      _Targets[r].Xf := _Targets[r].Xf + (Xf * _Blendables[i].Weight);
-      _Targets[r].Weight := _Targets[r].Weight + _Blendables[i].Weight;
+      w := _Targets[r].Weight;
+      if (w > UEps) then
+      begin
+        Xf1 := _Targets[r].Xf;
+        tw := w + _Blendables[i].Weight;
+        w := w / tw;
+        _Targets[r].Xf := TUTransform.Interpolate(Xf0, Xf1, w);
+        _Targets[r].Weight := tw;
+      end
+      else
+      begin
+        _Targets[r].Xf := Xf0;
+        _Targets[r].Weight := _Blendables[i].Weight;
+      end;
     end;
   end;
   for i := 0 to High(_Targets) do
   begin
     if _Targets[i].Weight < UEps then Continue;
-    tw := 1 / _Targets[i].Weight;
-    Xf := (_Targets[i].Xf * tw).Norm;
-    _Targets[i].Node.LocalTransform := Xf;
+    _Targets[i].Node.LocalTransform := _Targets[i].Xf;
   end;
 end;
 
@@ -1112,7 +1121,6 @@ begin
   for i := 0 to High(_Tracks) do
   begin
     Xf := _Tracks[i].Track.Sample(Time);
-    Xf := Xf.Norm;
     _Tracks[i].Target.LocalTransform := Xf;
   end;
 end;
