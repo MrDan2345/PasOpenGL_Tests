@@ -369,6 +369,8 @@ private
   var AnimBlend: TAnimationBlendShared;
   var AppStartTime: UInt64;
   var TaskLoad: specialize TUTask<TSceneList>;
+  var Anims: array [0..1] of Int32;
+  var AnimTime: TUFloat;
   procedure ImageFormatToGL(const ImageFormat: TUImageDataFormat; out Format, DataType: TGLenum);
   function TF_Load(const Args: array of const): TSceneList;
 protected
@@ -1617,9 +1619,11 @@ begin
     //AssetsFile('Ch15_nonPBR/Ch15_nonPBR.dae'),
     //AssetsFile('X Bot.dae'),
     //AssetsFile('Y Bot.dae'),
-    AssetsFile('Breakdance Uprock Var 1 Anim.dae'),
     AssetsFile('Arm Stretching Anim.dae'),
-    AssetsFile('Rumba Dancing Anim.dae')
+    AssetsFile('Excited Anim.dae'),
+    AssetsFile('Rumba Dancing Anim.dae'),
+    AssetsFile('Breakdance Uprock Var 1 Anim.dae'),
+    AssetsFile('Dancing Anim.dae')
   ]);
   //}
   Caption := 'PasOpenGL Loading...';
@@ -1737,13 +1741,26 @@ begin
   if AnimBlend.IsValid then
   begin
     bt := t * 0.1;
-    f0 := Trunc(bt) mod AnimBlend.Ptr.BlendableCount;
-    f1 := (f0 + 1) mod AnimBlend.Ptr.BlendableCount;
-    f := Sin(ULerp(-UHalfPi, UHalfPi, Frac(bt))) * 0.5 + 0.5;
+    if Trunc(bt) <> Trunc(AnimTime) then
+    begin
+      Anims[0] := Anims[1];
+      Anims[1] := Random(AnimBlend.Ptr.BlendableCount);
+      if (Anims[0] = Anims[1]) then
+      begin
+        Anims[1] := (Anims[0] + 1) mod AnimBlend.Ptr.BlendableCount;
+      end;
+    end;
+    AnimTime := bt;
+    f0 := Anims[0];
+    f1 := Anims[1];
+    //f0 := Trunc(bt) mod AnimBlend.Ptr.BlendableCount;
+    //f1 := (f0 + 1) mod AnimBlend.Ptr.BlendableCount;
+    f := Sin(ULerp(-UHalfPi, UHalfPi, Frac(bt)));// * 0.5 + 0.5;
+    f := (Power(Abs(f), 0.5) * USignOf(f)) * 0.5 + 0.5;
     for i := 0 to AnimBlend.Ptr.BlendableCount - 1 do
     begin
-      if i = f0 then AnimBlend.Ptr.SetWeight(i, 1 - f)
-      else if i = f1 then AnimBlend.Ptr.SetWeight(i, f)
+      if i = Anims[0] then AnimBlend.Ptr.SetWeight(i, 1 - f)
+      else if i = Anims[1] then AnimBlend.Ptr.SetWeight(i, f)
       else AnimBlend.Ptr.SetWeight(i, 0);
     end;
     AnimBlend.Ptr.Apply(t);
@@ -1807,6 +1824,9 @@ begin
   begin
     AnimBlend.Ptr.SetWeight(BlendInstances[i].Ptr, 1);
   end;
+  Anims[0] := Random(Length(BlendInstances));
+  Anims[1] := (Anims[0] + 1) mod Length(BlendInstances);
+  AnimTime := 0;
 end;
 
 procedure TForm1.PrintScene;
