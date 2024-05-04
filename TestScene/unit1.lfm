@@ -1,10 +1,9 @@
 object Form1: TForm1
   Left = 356
-  Height = 1170
-  Top = 66
+  Height = 1002
+  Top = 0
   Width = 1562
   Caption = 'PasOpenGL'
-  DesignTimePPI = 120
   Position = poScreenCenter
   LCLVersion = '3.99.0.0'
   OnActivate = FormActivate

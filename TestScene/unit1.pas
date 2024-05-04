@@ -1610,26 +1610,31 @@ begin
   //TaskLoad := TaskLoad.StartTask(@TF_Load, [AssetsFile('Vanguard By T. Choonyung/Vanguard By T. Choonyung.dae')]);
   //TaskLoad := TaskLoad.StartTask(@TF_Load, [AssetsFile('Vampire A Lusth/Vampire A Lusth.dae')]);
   //TaskLoad := TaskLoad.StartTask(@TF_Load, [AssetsFile('X Bot.dae')]);
-  //first file provides the scene, second provides animation (must be compatible with the scene)
-  //{
+  //first file provides the scene, additional files add animations (must be compatible with the scene)
   TaskLoad := TaskLoad.StartTask(@TF_Load, [
     //AssetsFile('Vampire A Lusth/Vampire A Lusth.dae'),
     AssetsFile('Vanguard By T. Choonyung/Vanguard By T. Choonyung.dae'),
     //AssetsFile('Castle Guard 02/Castle Guard 02.dae'),
     //AssetsFile('Ch15_nonPBR/Ch15_nonPBR.dae'),
+    //AssetsFile('Ch02_nonPBR/Ch02_nonPBR.dae'),
+    //AssetsFile('Ch26_nonPBR/Ch26_nonPBR.dae'),
     //AssetsFile('X Bot.dae'),
     //AssetsFile('Y Bot.dae'),
     AssetsFile('Arm Stretching Anim.dae'),
     AssetsFile('Excited Anim.dae'),
     AssetsFile('Rumba Dancing Anim.dae'),
     AssetsFile('Breakdance Uprock Var 1 Anim.dae'),
-    AssetsFile('Dancing Anim.dae')
+    AssetsFile('Dancing Anim.dae'),
+    AssetsFile('Chicken Dance Anim.dae'),
+    AssetsFile('Dancing Twerk Anim.dae'),
+    AssetsFile('Hip Hop Dancing Anim.dae'),
+    AssetsFile('Hip Hop Dancing 2 Anim.dae'),
+    AssetsFile('Hip Hop Dancing 3 Anim.dae'),
+    AssetsFile('Hip Hop Dancing 4 Anim.dae'),
+    AssetsFile('Shuffling Anim.dae'),
+    AssetsFile('Snake Hip Hop Dance Anim.dae')
   ]);
-  //}
   Caption := 'PasOpenGL Loading...';
-  //Load(AssetsFile('siren/siren_anim.dae'));
-  //Load('../Assets/skin.dae');
-  //Load('../Assets/box.dae');
 end;
 
 procedure TForm1.Finalize;
@@ -1723,7 +1728,8 @@ begin
 
   glViewport(0, 0, ClientWidth, ClientHeight);
   glEnable(GL_DEPTH_TEST);
-  glClearColor(0.4, 1, 0.8, 1);
+  //glClearColor(0.4, 1, 0.8, 1);
+  glClearColor(0.2, 0.2, 0.3, 1);
   glClearDepth(1);
   glClear(GL_COLOR_BUFFER_BIT or GL_DEPTH_BUFFER_BIT);
 
