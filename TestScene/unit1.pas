@@ -23,17 +23,9 @@ public
   type PSkinInfo = ^TSkinInfo;
 private
   var _Handle: TGLuint;
-  var _UniformWVP: TGLint;
-  var _UniformMatColor: TGLint;
-  var _UniformTex0: TGLint;
-  var _UniformBone: TGLint;
   class var _ShaderMap: specialize TUMap<UInt64, TShader>;
 public
   property Handle: TGLuint read _Handle;
-  property UniformWVP: TGLint read _UniformWVP;
-  property UniformMatColor: TGLint read _UniformMatColor;
-  property UniformTex0: TGLint read _UniformTex0;
-  property UniformBone: TGLint read _UniformBone;
   class function AutoShader(
     const VertexDescriptor: TUVertexDescriptor;
     const Material: TMaterial;
@@ -129,11 +121,27 @@ type TMaterial = class (TURefClass)
 public
   type TMaterialList = array of TMaterial;
 private
-  var _Texture: TTextureShared;
-  var _Color: TUColor;
+  var _AmbientTexture: TTextureShared;
+  var _AmbientColor: TUColor;
+  var _DiffuseTexture: TTextureShared;
+  var _DiffuseColor: TUColor;
+  var _EmissiveTexture: TTextureShared;
+  var _EmissiveColor: TUColor;
+  var _SpecularTexture: TTextureShared;
+  var _SpecularColor: TUColor;
+  var _NormalTexture: TTextureShared;
+  var _SpecularPower: TUFloat;
 public
-  property Texture: TTextureShared read _Texture;
-  property Color: TUColor read _Color;
+  property AmbientTexture: TTextureShared read _AmbientTexture;
+  property AmbientColor: TUColor read _AmbientColor;
+  property DiffuseTexture: TTextureShared read _DiffuseTexture;
+  property DiffuseColor: TUColor read _DiffuseColor;
+  property EmissiveTexture: TTextureShared read _EmissiveTexture;
+  property EmissiveColor: TUColor read _EmissiveColor;
+  property SpecularTexture: TTextureShared read _SpecularTexture;
+  property SpecularColor: TUColor read _SpecularColor;
+  property NormalTexture: TTextureShared read _NormalTexture;
+  property SpecularPower: TUFloat read _SpecularPower;
   constructor Create(
     const Context: TLoadingContext;
     const MaterialData: TUSceneData.TMaterialInterface
@@ -241,6 +249,22 @@ public
 end;
 type TAnimationBlendShared = specialize TUSharedRef<TAnimationBlend>;
 
+type TUniformGroup = record
+  WVP: TGLint;
+  Bone: TGLint;
+  MatAmbientColor: TGLint;
+  MatAmbientTexture: TGLint;
+  MatDiffuseColor: TGLint;
+  MatDiffuseTexture: TGLint;
+  MatEmissiveColor: TGLint;
+  MatEmissiveTexture: TGLint;
+  MatSpecularColor: TGLint;
+  MatSpecularTexture: TGLint;
+  MatNormalTexture: TGLint;
+  procedure Setup(const Shader: TShader);
+end;
+type TUniformGroupList = array of TUniformGroup;
+
 type TNode = class (TURefClass)
 public
   type TNodeList = array of TNode;
@@ -257,11 +281,13 @@ public
     var _Mesh: TMesh;
     var _Materials: TMaterial.TMaterialList;
     var _Shaders: TShaderList;
+    var _Uniforms: TUniformGroupList;
     var _VertexArrays: TGLuintArray;
   public
     property Mesh: TMesh read _Mesh;
     property Materials: TMaterial.TMaterialList read _Materials;
     property Shaders: TShaderList read _Shaders;
+    property Uniforms: TUniformGroupList read _Uniforms;
     property VertexArrays: TGLuintArray read _VertexArrays;
     constructor Create(
       const Context: TLoadingContext;
@@ -281,6 +307,7 @@ public
     var _Skin: TSkin;
     var _Materials: TMaterial.TMaterialList;
     var _Shaders: TShaderList;
+    var _Uniforms: TUniformGroupList;
     var _VertexArrays: TGLuintArray;
     var _Pose: TUMatArray;
     var _JointBindings: TNodeList;
@@ -288,6 +315,7 @@ public
     property Skin: TSkin read _Skin;
     property Materials: TMaterial.TMaterialList read _Materials;
     property Shaders: TShaderList read _Shaders;
+    property Uniforms: TUniformGroupList read _Uniforms;
     property VertexArrays: TGLuintArray read _VertexArrays;
     property Pose: TUMatArray read _Pose;
     constructor Create(
@@ -508,7 +536,6 @@ begin
       end
       else
       begin
-        AttName := AttributeName(VertexDescriptor[i]);
         vs += '  out_' + AttName + ' = in_' + AttName + ';'#$D#$A;
       end;
     end;
@@ -523,17 +550,60 @@ begin
     ps += 'layout (location = ' + IntToStr(i) + ') in vec' + AttSize + ' in_' + AttName + ';'#$D#$A;
   end;
   ps += 'out vec4 out_color;'#$D#$A;
-  if Material.Texture.IsValid then
+  if Material.DiffuseTexture.IsValid then
   begin
-    ps += 'uniform sampler2D tex0;'#$D#$A;
+    ps += 'uniform sampler2D m_diffuse_tex;'#$D#$A;
   end;
-  ps += 'uniform vec4 m_color;'#$D#$A;
+  if Material.AmbientTexture.IsValid then
+  begin
+    ps += 'uniform sampler2D m_ambient_tex;'#$D#$A;
+  end;
+  if Material.EmissiveTexture.IsValid then
+  begin
+    ps += 'uniform sampler2D m_emissive_tex;'#$D#$A;
+  end;
+  if Material.SpecularTexture.IsValid then
+  begin
+    ps += 'uniform sampler2D m_specular_tex;'#$D#$A;
+  end;
+  if Material.NormalTexture.IsValid then
+  begin
+    ps += 'uniform sampler2D m_normal_tex;'#$D#$A;
+  end;
+  ps += 'uniform vec4 m_ambient_col;'#$D#$A;
+  ps += 'uniform vec4 m_diffuse_col;'#$D#$A;
+  ps += 'uniform vec4 m_emissive_col;'#$D#$A;
+  if not Material.SpecularTexture.IsValid then
+  begin
+    ps += 'uniform vec4 m_specular_col;'#$D#$A;
+  end;
+  ps += 'uniform vec3 light_dir;'#$D#$A;
+  ps += 'uniform vec3 light_col;'#$D#$A;
   ps += 'void main() {'#$D#$A;
-  ps += '  out_color = m_color;'#$D#$A;
-  if Material.Texture.IsValid then
+  ps += '  vec4 diffuse = m_diffuse_col;'#$D#$A;
+  if Material.DiffuseTexture.IsValid then
   begin
-    ps += '  out_color *= texture(tex0, in_texcoord0.xy);'#$D#$A;
+    ps += '  diffuse *= texture(m_diffuse_tex, in_texcoord0.xy);'#$D#$A;
   end;
+  ps += '  vec4 ambient = m_ambient_col;'#$D#$A;
+  if Material.AmbientTexture.IsValid then
+  begin
+    ps += '  ambient += texture(m_ambient_tex, in_texcoord0.xy);'#$D#$A;
+  end;
+  ps += '  vec4 emissive = m_emissive_col;'#$D#$A;
+  if Material.AmbientTexture.IsValid then
+  begin
+    ps += '  emissive += texture(m_emissive_tex, in_texcoord0.xy);'#$D#$A;
+  end;
+  if Material.SpecularTexture.IsValid then
+  begin
+    ps += '  vec4 specular = texture(m_specular_tex, in_texcoord0.xy);'#$D#$A;
+  end
+  else
+  begin
+    ps += '  vec4 specular = m_specular_col;'#$D#$A;
+  end;
+  ps += '  out_color = diffuse;'#$D#$A;
   ps += '}'#$D#$A;
   UStrToFile('vs_' + IntToStr(Hash) + '.txt', vs);
   UStrToFile('ps_' + IntToStr(Hash) + '.txt', ps);
@@ -579,10 +649,6 @@ begin
   end;
   glDeleteShader(PixelShader);
   glDeleteShader(VertexShader);
-  _UniformWVP := UniformLocation('WVP');
-  _UniformMatColor := UniformLocation('m_color');
-  _UniformTex0 := UniformLocation('tex0');
-  _UniformBone := UniformLocation('Bone');
 end;
 
 destructor TShader.Destroy;
@@ -617,7 +683,6 @@ begin
   begin
     IndexFormat := GL_UNSIGNED_SHORT;
   end;
-  //{ DSA
   glCreateBuffers(1, @VertexBuffer);
   glNamedBufferStorage(
     VertexBuffer, VertexCount * VertexSize,
@@ -628,17 +693,6 @@ begin
     IndexBuffer, IndexCount * IndexSize,
     MeshSubset.IndexData, 0
   );
-  //}
-  { pre DSA
-  glGenBuffers(1, @VertexBuffer);
-  glBindBuffer(GL_ARRAY_BUFFER, VertexBuffer);
-  glBufferData(GL_ARRAY_BUFFER, VertexCount * VertexSize, MeshSubset.VertexData, GL_STATIC_DRAW);
-  glBindBuffer(GL_ARRAY_BUFFER, 0);
-  glGenBuffers(1, @IndexBuffer);
-  glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, IndexBuffer);
-  glBufferData(GL_ELEMENT_ARRAY_BUFFER, IndexCount * IndexSize, MeshSubset.IndexData, GL_STATIC_DRAW);
-  glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
-  //}
 end;
 
 destructor TMesh.TSubset.Destroy;
@@ -683,19 +737,11 @@ begin
   VertexCount := MeshSubset.VertexCount;
   VertexSize := SkinSubset.VertexSize;
   WeightCount := SkinSubset.WeightCount;
-  //{ DSA
   glCreateBuffers(1, @VertexBuffer);
   glNamedBufferStorage(
     VertexBuffer, VertexCount * VertexSize,
     SkinSubset.VertexData, 0
   );
-  //}
-  { pre DSA
-  glGenBuffers(1, @VertexBuffer);
-  glBindBuffer(GL_ARRAY_BUFFER, VertexBuffer);
-  glBufferData(GL_ARRAY_BUFFER, VertexCount * VertexSize, SkinSubset.VertexData, GL_STATIC_DRAW);
-  glBindBuffer(GL_ARRAY_BUFFER, 0);
-  //}
 end;
 
 destructor TSkin.TSubset.Destroy;
@@ -739,8 +785,6 @@ constructor TTexture.Create(
   var TextureFormat, TextureType: TGLenum;
   var MipLevels: UInt32;
 begin
-  //Image := ULoadImageData('../Assets/siren/' + ImageData.FileName);
-  //Image := ULoadImageData('../Assets/' + ImageData.FileName);
   Image := ULoadImageData(Context.LoadDir + '/' + ImageData.FileName);
   if not Image.IsValid then
   begin
@@ -749,7 +793,6 @@ begin
   end;
   MipLevels := Round(Math.Log2(UMax(Image.Ptr.Width, Image.Ptr.Height)));
   Form1.ImageFormatToGL(Image.Ptr.Format, TextureFormat, TextureType);
-  //{ DSA
   glCreateTextures(GL_TEXTURE_2D, 1, @_Handle);
   glTextureParameteri(_Handle, GL_TEXTURE_WRAP_S, GL_REPEAT);
   glTextureParameteri(_Handle, GL_TEXTURE_WRAP_T, GL_REPEAT);
@@ -764,22 +807,6 @@ begin
     TextureFormat, TextureType, Image.Ptr.Data
   );
   glGenerateTextureMipmap(_Handle);
-  //}
-  { pre DSA
-  glGenTextures(1, @_Handle);
-  glBindTexture(GL_TEXTURE_2D, _Handle);
-  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
-  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
-  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
-  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-  glTexImage2D(
-    GL_TEXTURE_2D, 0, GL_RGB,
-    Image.Ptr.Width, Image.Ptr.Height, 0,
-    TextureFormat, TextureType, Image.Ptr.Data
-  );
-  glGenerateMipmap(GL_TEXTURE_2D);
-  glBindTexture(GL_TEXTURE_2D, 0);
-  //}
 end;
 
 destructor TTexture.Destroy;
@@ -793,23 +820,82 @@ constructor TMaterial.Create(
   const MaterialData: TUSceneData.TMaterialInterface
 );
   var i, j: Int32;
+  var ParamName: String;
   var Param: TUSceneData.TMaterialInterface.TParam;
+  var ParamFloat: TUSceneData.TMaterialInterface.TParamFloat absolute Param;
   var ParamVec4: TUSceneData.TMaterialInterface.TParamVec4 absolute Param;
   var Image: TUSceneData.TMaterialInterface.TParamImage absolute Param;
 begin
-  _Color := TUColor.White;
+  _AmbientColor := TUColor.Black;
+  _DiffuseColor := TUColor.White;
+  _EmissiveColor := TUColor.Black;
+  _SpecularColor := TUColor.Black;
+  _SpecularPower := 50;
   for i := 0 to High(MaterialData.Params) do
   begin
     Param := MaterialData.Params[i];
-    if LowerCase(Param.Name) <> 'diffuse' then Continue;
-    if Param is TUSceneData.TMaterialInterface.TParamVec4 then
+    ParamName := LowerCase(Param.Name);
+    WriteLn(ParamName);
+    if ParamName = 'emission' then
     begin
-      _Color := ParamVec4.Value;
+      if Param is TUSceneData.TMaterialInterface.TParamVec4 then
+      begin
+        _EmissiveColor := ParamVec4.Value;
+      end
+      else if Param is TUSceneData.TMaterialInterface.TParamImage then
+      begin
+        j := Context.TextureRemap.FindIndexByKey(Image.Image);
+        if j > -1 then _EmissiveTexture := Context.TextureRemap[j];
+      end;
     end
-    else if Param is TUSceneData.TMaterialInterface.TParamImage then
+    else if ParamName = 'ambient' then
     begin
-      j := Context.TextureRemap.FindIndexByKey(Image.Image);
-      if j > -1 then _Texture := Context.TextureRemap[j];
+      if Param is TUSceneData.TMaterialInterface.TParamVec4 then
+      begin
+        _AmbientColor := ParamVec4.Value;
+      end
+      else if Param is TUSceneData.TMaterialInterface.TParamImage then
+      begin
+        j := Context.TextureRemap.FindIndexByKey(Image.Image);
+        if j > -1 then _AmbientTexture := Context.TextureRemap[j];
+      end;
+    end
+    else if ParamName = 'diffuse' then
+    begin
+      if Param is TUSceneData.TMaterialInterface.TParamVec4 then
+      begin
+        _DiffuseColor := ParamVec4.Value;
+      end
+      else if Param is TUSceneData.TMaterialInterface.TParamImage then
+      begin
+        j := Context.TextureRemap.FindIndexByKey(Image.Image);
+        if j > -1 then _DiffuseTexture := Context.TextureRemap[j];
+      end;
+    end
+    else if ParamName = 'specular' then
+    begin
+      if Param is TUSceneData.TMaterialInterface.TParamVec4 then
+      begin
+        _SpecularColor := ParamVec4.Value;
+      end
+      else if Param is TUSceneData.TMaterialInterface.TParamImage then
+      begin
+        j := Context.TextureRemap.FindIndexByKey(Image.Image);
+        if j > -1 then _SpecularTexture := Context.TextureRemap[j];
+      end;
+    end
+    else if (ParamName = 'displacement')
+    or (ParamName = 'normal')then
+    begin
+      if Param is TUSceneData.TMaterialInterface.TParamImage then
+      begin
+        j := Context.TextureRemap.FindIndexByKey(Image.Image);
+        if j > -1 then _NormalTexture := Context.TextureRemap[j];
+      end;
+    end
+    else if (ParamName = 'shininess') then
+    begin
+      _SpecularPower := ParamFloat.Value;
     end;
   end;
 end;
@@ -1089,6 +1175,21 @@ begin
   Apply;
 end;
 
+procedure TUniformGroup.Setup(const Shader: TShader);
+begin
+  WVP := Shader.UniformLocation('WVP');
+  Bone := Shader.UniformLocation('Bone');
+  MatAmbientColor := Shader.UniformLocation('m_ambient_col');
+  MatAmbientTexture := Shader.UniformLocation('m_ambient_tex');
+  MatDiffuseColor := Shader.UniformLocation('m_diffuse_col');
+  MatDiffuseTexture := Shader.UniformLocation('m_diffuse_tex');
+  MatEmissiveColor := Shader.UniformLocation('m_emissive_col');
+  MatEmissiveTexture := Shader.UniformLocation('m_emissive_tex');
+  MatSpecularColor := Shader.UniformLocation('m_specular_col');
+  MatSpecularTexture := Shader.UniformLocation('m_specular_tex');
+  MatNormalTexture := Shader.UniformLocation('m_normal_tex');
+end;
+
 constructor TAnimationInstance.Create(
   const Animation: TAnimation;
   const TargetNode: TNode;
@@ -1188,30 +1289,26 @@ procedure TNode.TAttachmentMesh.Setup;
   var SubsetId, i: Int32;
   var Subset: TMesh.TSubset;
   var AttribOffset: GLuint;
-  //var AttribOffset: Pointer;
   var vd: TUVertexDescriptor;
   var VertexArray: TGLuint;
 begin
   if Length(_VertexArrays) > 0 then Exit;
   SetLength(_VertexArrays, Length(_Mesh.Subsets));
+  SetLength(_Shaders, Length(_Mesh.Subsets));
+  SetLength(_Uniforms, Length(_Mesh.Subsets));
   glCreateVertexArrays(Length(_VertexArrays), @_VertexArrays[0]);
-  //glGenVertexArrays(Length(_VertexArrays), @_VertexArrays[0]);
   for SubsetId := 0 to High(_Mesh.Subsets) do
   begin
     VertexArray := _VertexArrays[SubsetId];
     Subset := _Mesh.Subsets[SubsetId];
     vd := Subset.VertexDescriptor;
-    specialize UArrAppend<TShaderShared>(
-      _Shaders, TShader.AutoShader(vd, _Materials[SubsetId])
-    );
+    _Shaders[SubsetId] := TShader.AutoShader(vd, _Materials[SubsetId]);
+    _Uniforms[SubsetId].Setup(_Shaders[SubsetId].Ptr);
     glVertexArrayVertexBuffer(
       VertexArray,
       0, Subset.VertexBuffer,
       0, Subset.VertexSize
     );
-    //glBindVertexArray(_VertexArrays[SubsetId]);
-    //glBindBuffer(GL_ARRAY_BUFFER, Subset.VertexBuffer);
-    //AttribOffset := nil;
     AttribOffset := 0;
     for i := 0 to High(vd) do
     begin
@@ -1221,18 +1318,12 @@ begin
         GL_FLOAT, GL_FALSE, AttribOffset
       );
       glVertexArrayAttribBinding(VertexArray, i, 0);
-      //glVertexAttribPointer(
-      //  i, vd[i].DataCount, GL_FLOAT, GL_FALSE,
-      //  Subset.VertexSize, AttribOffset
-      //);
-      //glEnableVertexAttribArray(i);
       AttribOffset += vd[i].Size;
     end;
     glVertexArrayElementBuffer(
       VertexArray,
       Subset.IndexBuffer
     );
-    //glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, Subset.IndexBuffer);
   end;
   glBindVertexArray(0);
 end;
@@ -1279,15 +1370,15 @@ procedure TNode.TAttachmentSkin.Setup;
   var MeshSubset: TMesh.TSubset;
   var SkinSubset: TSkin.TSubset;
   var SkinInfo: TShader.TSkinInfo;
-  //var AttribOffset: Pointer;
   var AttribOffset: GLuint;
   var vd: TUVertexDescriptor;
   var VertexArray: TGLuint;
 begin
   if Length(_VertexArrays) > 0 then Exit;
   SetLength(_VertexArrays, Length(_Skin.Subsets));
+  SetLength(_Shaders, Length(_Skin.Subsets));
+  SetLength(_Uniforms, Length(_Skin.Subsets));
   glCreateVertexArrays(Length(_VertexArrays), @_VertexArrays[0]);
-  //glGenVertexArrays(Length(_VertexArrays), @_VertexArrays[0]);
   for SubsetId := 0 to High(_Skin.Subsets) do
   begin
     SkinSubset := _Skin.Subsets[SubsetId];
@@ -1296,18 +1387,14 @@ begin
     vd := MeshSubset.VertexDescriptor;
     SkinInfo.BoneCount := Length(_Skin.Joints);
     SkinInfo.BoneWeights := SkinSubset.WeightCount;
-    specialize UArrAppend<TShaderShared>(
-      _Shaders, TShader.AutoShader(vd, _Materials[SubsetId], @SkinInfo)
-    );
+    _Shaders[SubsetId] := TShader.AutoShader(vd, _Materials[SubsetId], @SkinInfo);
+    _Uniforms[SubsetId].Setup(_Shaders[SubsetId].Ptr);
     glVertexArrayVertexBuffer(
       VertexArray,
       0, MeshSubset.VertexBuffer,
       0, MeshSubset.VertexSize
     );
-    //glBindVertexArray(_VertexArrays[SubsetId]);
-    //glBindBuffer(GL_ARRAY_BUFFER, MeshSubset.VertexBuffer);
     AttribOffset := 0;
-    //AttribOffset := nil;
     for i := 0 to High(vd) do
     begin
       glEnableVertexArrayAttrib(VertexArray, i);
@@ -1316,11 +1403,6 @@ begin
         GL_FLOAT, GL_FALSE, AttribOffset
       );
       glVertexArrayAttribBinding(VertexArray, i, 0);
-      //glVertexAttribPointer(
-      //  i, vd[i].DataCount, GL_FLOAT, GL_FALSE,
-      //  MeshSubset.VertexSize, AttribOffset
-      //);
-      //glEnableVertexAttribArray(i);
       AttribOffset += vd[i].Size;
     end;
     glVertexArrayVertexBuffer(
@@ -1328,8 +1410,6 @@ begin
       1, SkinSubset.VertexBuffer,
       0, SkinSubset.VertexSize
     );
-    //glBindBuffer(GL_ARRAY_BUFFER, SkinSubset.VertexBuffer);
-    //AttribOffset := nil;
     AttribOffset := 0;
     i := Length(vd);
     glEnableVertexArrayAttrib(VertexArray, i);
@@ -1346,19 +1426,7 @@ begin
       GL_FLOAT, GL_FALSE, AttribOffset
     );
     glVertexArrayAttribBinding(VertexArray, i, 1);
-    //glVertexAttribIPointer(
-    //  i, SkinInfo.BoneWeights, GL_UNSIGNED_INT,
-    //  SkinSubset.VertexSize, AttribOffset
-    //);
-    //glEnableVertexAttribArray(i); Inc(i);
-    //AttribOffset += SkinInfo.BoneWeights * SizeOf(UInt32);
-    //glVertexAttribPointer(
-    //  i, SkinInfo.BoneWeights, GL_FLOAT, GL_FALSE,
-    //  SkinSubset.VertexSize, AttribOffset
-    //);
-    //glEnableVertexAttribArray(i);
     glVertexArrayElementBuffer(VertexArray, MeshSubset.IndexBuffer);
-    //glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, MeshSubset.IndexBuffer);
   end;
   glBindVertexArray(0);
 end;
@@ -1657,15 +1725,47 @@ begin
 end;
 
 procedure TForm1.Tick;
+  procedure SetupUniforms(
+    const Material: TMaterial;
+    const UniformGroup: TUniformGroup
+  );
+    var CurTexture: Int32;
+    procedure SetColor(const UniformId: TGLint; const Color: TUColor);
+      var ColorVec: TUVec4;
+    begin
+      if UniformId = -1 then Exit;
+      ColorVec := Color;
+      glUniform4fv(UniformId, 1, @ColorVec);
+    end;
+    procedure SetTexture(const UniformId: TGLint; const Texture: TTextureShared);
+    begin
+      if UniformId = -1 then Exit;
+      if not Texture.IsValid then Exit;
+      glBindTextureUnit(CurTexture, Texture.Ptr.Handle);
+      glUniform1i(UniformId, CurTexture);
+      Inc(CurTexture);
+    end;
+  begin
+    CurTexture := 0;
+    SetColor(UniformGroup.MatAmbientColor, Material.AmbientColor);
+    SetTexture(UniformGroup.MatAmbientTexture, Material.AmbientTexture);
+    SetColor(UniformGroup.MatDiffuseColor, Material.DiffuseColor);
+    SetTexture(UniformGroup.MatDiffuseTexture, Material.DiffuseTexture);
+    SetColor(UniformGroup.MatEmissiveColor, Material.EmissiveColor);
+    SetTexture(UniformGroup.MatEmissiveTexture, Material.EmissiveTexture);
+    SetColor(UniformGroup.MatSpecularColor, Material.SpecularColor);
+    SetTexture(UniformGroup.MatSpecularTexture, Material.SpecularTexture);
+    SetTexture(UniformGroup.MatNormalTexture, Material.NormalTexture);
+  end;
   var W, V, P, WVP: TUMat;
   procedure DrawNode(const Node: TNode);
     var Attach: TNode.TAttachment;
     var AttachMesh: TNode.TAttachmentMesh;
     var AttachSkin: TNode.TAttachmentSkin;
-    var NewBuffer, NewTexture: TGLuint;
+    var NewBuffer: TGLuint;
     var NewShader: TShader;
     var Material: TMaterial;
-    var ColorVec: TUVec4;
+    var UniformGroup: TUniformGroup;
     var Xf: TUMat;
     var i: Int32;
   begin
@@ -1679,21 +1779,12 @@ procedure TForm1.Tick;
       begin
         Material := AttachMesh.Materials[i];
         NewShader := AttachMesh.Shaders[i].Ptr;
+        UniformGroup := AttachMesh.Uniforms[i];
         NewShader.Use;
         NewBuffer := AttachMesh.VertexArrays[i];
         glBindVertexArray(NewBuffer);
-        if Material.Texture.IsValid
-        and (NewShader.UniformTex0 >= 0) then
-        begin
-          NewTexture := Material.Texture.Ptr.Handle;
-          glBindTextureUnit(0, NewTexture);
-          //glActiveTexture(GL_TEXTURE0);
-          //glBindTexture(GL_TEXTURE_2D, NewTexture);
-          glUniform1i(NewShader.UniformTex0, 0);
-        end;
-        ColorVec := Material.Color;
-        glUniform4fv(NewShader.UniformMatColor, 1, @ColorVec);
-        glUniformMatrix4fv(NewShader.UniformWVP, 1, GL_TRUE, @WVP);
+        SetupUniforms(Material, UniformGroup);
+        glUniformMatrix4fv(UniformGroup.WVP, 1, GL_TRUE, @WVP);
         AttachMesh.Mesh.DrawSubset(i);
       end;
     end
@@ -1707,22 +1798,13 @@ procedure TForm1.Tick;
       begin
         Material := AttachSkin.Materials[i];
         NewShader := AttachSkin.Shaders[i].Ptr;
+        UniformGroup := AttachSkin.Uniforms[i];
         NewShader.Use;
         NewBuffer := AttachSkin.VertexArrays[i];
         glBindVertexArray(NewBuffer);
-        if Material.Texture.IsValid
-        and (NewShader.UniformTex0 >= 0) then
-        begin
-          NewTexture := Material.Texture.Ptr.Handle;
-          glBindTextureUnit(0, NewTexture);
-          //glActiveTexture(GL_TEXTURE0);
-          //glBindTexture(GL_TEXTURE_2D, NewTexture);
-          glUniform1i(NewShader.UniformTex0, 0);
-        end;
-        ColorVec := Material.Color;
-        glUniform4fv(NewShader.UniformMatColor, 1, @ColorVec);
-        glUniformMatrix4fv(NewShader.UniformWVP, 1, GL_TRUE, @WVP);
-        glUniformMatrix4fv(NewShader.UniformBone, Length(AttachSkin.Pose), GL_TRUE, @AttachSkin.Pose[0]);
+        SetupUniforms(Material, UniformGroup);
+        glUniformMatrix4fv(UniformGroup.WVP, 1, GL_TRUE, @WVP);
+        glUniformMatrix4fv(UniformGroup.Bone, Length(AttachSkin.Pose), GL_TRUE, @AttachSkin.Pose[0]);
         AttachSkin.Skin.Mesh.DrawSubset(i);
       end;
     end;
@@ -1731,7 +1813,7 @@ procedure TForm1.Tick;
       DrawNode(Node.Children[i]);
     end;
   end;
-  var t, f0, f1, f, bt: TUFloat;
+  var t, f, bt: TUFloat;
   var i: Int32;
 begin
   W := TUMat.Identity;
@@ -1772,10 +1854,6 @@ begin
       end;
     end;
     AnimTime := bt;
-    f0 := Anims[0];
-    f1 := Anims[1];
-    //f0 := Trunc(bt) mod AnimBlend.Ptr.BlendableCount;
-    //f1 := (f0 + 1) mod AnimBlend.Ptr.BlendableCount;
     f := Sin(ULerp(-UHalfPi, UHalfPi, Frac(bt)));// * 0.5 + 0.5;
     f := (Power(Abs(f), 0.5) * USignOf(f)) * 0.5 + 0.5;
     for i := 0 to AnimBlend.Ptr.BlendableCount - 1 do
