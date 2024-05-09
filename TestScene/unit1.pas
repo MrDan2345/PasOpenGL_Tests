@@ -474,28 +474,43 @@ begin
   end;
   for i := 0 to High(VertexDescriptor) do
   begin
-    if VertexDescriptor[i].Semantic = as_position then
-    begin
-      if Assigned(SkinInfo) then
+    AttName := AttributeName(VertexDescriptor[i]);
+    case VertexDescriptor[i].Semantic of
+      as_position:
       begin
-        vs += '  vec4 position = vec4((vec4(in_position, 1.0) * S).xyz, 1.0);'#$D#$A;
+        if Assigned(SkinInfo) then
+        begin
+          vs += '  vec4 position = vec4((vec4(in_position, 1.0) * S).xyz, 1.0);'#$D#$A;
+        end
+        else
+        begin
+          vs += '  vec4 position = vec4(in_position, 1.0);'#$D#$A;
+        end;
+        vs += '  gl_Position = position * WVP;'#$D#$A;
+      end;
+      as_normal,
+      as_tangent,
+      as_binormal:
+      begin
+        if Assigned(SkinInfo) then
+        begin
+          vs += '  vec3 ' + AttName + ' = in_' + AttName + ' * mat3x3(S);'#$D#$A;
+        end
+        else
+        begin
+          vs += '  vec3 ' + AttName + ' = in_' + AttName + ';'#$D#$A;
+        end;
+        vs += '  out_' + AttName + ' = ' + AttName + ' * mat3x3(WVP);'#$D#$A;
+      end;
+      as_texcoord:
+      begin
+        vs += '  out_' + AttName + ' = vec2(in_' + AttName + '.x, ' + 'in_' + AttName + '.y);'#$D#$A;
       end
       else
       begin
-        vs += '  vec4 position = vec4(in_position, 1.0);'#$D#$A;
+        AttName := AttributeName(VertexDescriptor[i]);
+        vs += '  out_' + AttName + ' = in_' + AttName + ';'#$D#$A;
       end;
-      vs += '  gl_Position = position * WVP;'#$D#$A;
-    end
-    else if VertexDescriptor[i].Semantic = as_texcoord then
-    begin
-      AttName := AttributeName(VertexDescriptor[i]);
-      //vs += '  out_' + AttName + ' = vec2(in_' + AttName + '.x, ' + '1-in_' + AttName + '.y);'#$D#$A;
-      vs += '  out_' + AttName + ' = vec2(in_' + AttName + '.x, ' + 'in_' + AttName + '.y);'#$D#$A;
-    end
-    else
-    begin
-      AttName := AttributeName(VertexDescriptor[i]);
-      vs += '  out_' + AttName + ' = in_' + AttName + ';'#$D#$A;
     end;
   end;
   vs += '}'#$D#$A;
@@ -520,8 +535,8 @@ begin
     ps += '  out_color *= texture(tex0, in_texcoord0.xy);'#$D#$A;
   end;
   ps += '}'#$D#$A;
-  //UStrToFile('vs_' + IntToStr(Hash) + '.txt', vs);
-  //UStrToFile('ps_' + IntToStr(Hash) + '.txt', ps);
+  UStrToFile('vs_' + IntToStr(Hash) + '.txt', vs);
+  UStrToFile('ps_' + IntToStr(Hash) + '.txt', ps);
   Result := TShader.Create(vs, ps);
   _ShaderMap.Add(Hash, Result);
 end;
@@ -1555,7 +1570,7 @@ begin
       Continue;
     end;
     Context := TLoadingContext.Create(FileName);
-    Data := TUSceneDataDAE.Create([{sdo_optimize}], sdu_y);
+    Data := TUSceneDataDAE.Create([sdo_optimize, sdo_gen_tangents], sdu_y);
     Scene := TScene.Create;
     try
       Data.Load(FileName);
