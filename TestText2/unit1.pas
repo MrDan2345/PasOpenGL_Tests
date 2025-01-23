@@ -96,6 +96,7 @@ begin
 end;
 
 procedure TForm1.Tick;
+  const Bias = 0.0001;
   var Lines: TUVec2Array;
   procedure AddLine(const v0, v1: TUVec2);
     var i: Int32;
@@ -103,19 +104,19 @@ procedure TForm1.Tick;
   begin
     i := Length(Lines);
     SetLength(Lines, i + 2);
-    n := (v1 - v0).Norm * 0.001;
+    n := (v1 - v0).Norm * Bias;
     Lines[i] := v0 + n;
     Lines[i + 1] := v1 - n;
   end;
-  var Curves:TUVec2Array;
+  var Curves: TUVec2Array;
   procedure AddCurve(const v0, v1, v2: TUVec2);
     var i: Int32;
   begin
     i := Length(Curves);
     SetLength(Curves, i + 3);
-    Curves[i] := UBezier(v0, v1, v2, 0.001);
+    Curves[i] := UBezier(v0, v1, v2, Bias);
     Curves[i + 1] := v1;
-    Curves[i + 2] := UBezier(v0, v1, v2, 1 - 0.001);;
+    Curves[i + 2] := UBezier(v0, v1, v2, 1 - Bias);
   end;
   var W, V, P, WVP: TUMat;
   var i, j, n: Int32;

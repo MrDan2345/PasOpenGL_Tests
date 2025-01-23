@@ -2,7 +2,6 @@
 layout (location = 1) in vec2 in_t;
 out vec4 out_c;
 
-//uniform sampler2D tex0;
 uniform vec2 lines[256];
 uniform vec2 curves[256];
 uniform int line_count;
@@ -23,18 +22,17 @@ vec2 bezier(vec2 v0, vec2 v1, vec2 v2, float t) {
 float cross(vec2 v0, vec2 v1) {
     return v0.x * v1.y - v0.y * v1.x;
 }
-const int curve_seg_count = 5;
+const int curve_seg_count = 10;
 float cur_dist = 1000.0;
 float cur_sign = 0.0;
 void apply_dist(vec2 a, vec2 b, vec2 c, float d) {
     if (d > cur_dist) return;
-    float s = cross(b - a, c - b);
     cur_dist = d;
+	float s = cross(b - a, c - b) < 0.0 ? -1.0 : 1.0;
     cur_sign = s;
 }
 
 void main() {
-//*
     for (int i = 0; i < line_count; ++i) {
         int n = i * 2;
         vec2 a = lines[n + 0];
@@ -57,9 +55,7 @@ void main() {
             //cur_dist = min(cur_dist, d);
             p0 = p1;
         }
-        //*/
     }
-//*/
     //d = dist_point_line(points[0], points[1], in_t);
     //d = smoothstep(0.005, 0.0, d);
     float s = cur_sign < 0 ? -1.0 : 1.0;
