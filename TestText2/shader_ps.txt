@@ -1,0 +1,72 @@
+#version 430 core
+layout (location = 1) in vec2 in_t;
+out vec4 out_c;
+
+//uniform sampler2D tex0;
+uniform vec2 lines[256];
+uniform vec2 curves[256];
+uniform int line_count;
+uniform int curve_count;
+
+float dist_point_line(vec2 l0, vec2 l1, vec2 p) {
+    vec2 v0 = p - l0;
+    vec2 v1 = l1 - l0;
+    float u = clamp(dot(v0, v1) / dot(v1, v1), 0, 1);
+    return length(p - (l0 + v1 * u));
+}
+
+vec2 bezier(vec2 v0, vec2 v1, vec2 v2, float t) {
+    float ti = 1.0 - t;
+    return ti * ti * v0 + 2.0 * ti * t * v1 + t * t * v2;
+}
+
+float cross(vec2 v0, vec2 v1) {
+    return v0.x * v1.y - v0.y * v1.x;
+}
+const int curve_seg_count = 5;
+float cur_dist = 1000.0;
+float cur_sign = 0.0;
+void apply_dist(vec2 a, vec2 b, vec2 c, float d) {
+    if (d > cur_dist) return;
+    float s = cross(b - a, c - b);
+    cur_dist = d;
+    cur_sign = s;
+}
+
+void main() {
+//*
+    for (int i = 0; i < line_count; ++i) {
+        int n = i * 2;
+        vec2 a = lines[n + 0];
+        vec2 b = lines[n + 1];
+        float d = dist_point_line(a, b, in_t);
+        apply_dist(in_t, a, b, d);
+        //cur_dist = min(cur_dist, d);
+    }
+    for (int i = 0; i < curve_count; ++i) {
+        int n = i * 3;
+        vec2 a = curves[n + 0];
+        vec2 b = curves[n + 1];
+        vec2 c = curves[n + 2];
+        vec2 p0 = a;
+        for (int j = 1; j < curve_seg_count; ++j) {
+            float t = float(j) / float(curve_seg_count - 1);
+            vec2 p1 = bezier(a, b, c, t);
+            float d = dist_point_line(p0, p1, in_t);
+            apply_dist(in_t, p0, p1, d);
+            //cur_dist = min(cur_dist, d);
+            p0 = p1;
+        }
+        //*/
+    }
+//*/
+    //d = dist_point_line(points[0], points[1], in_t);
+    //d = smoothstep(0.005, 0.0, d);
+    float s = cur_sign < 0 ? -1.0 : 1.0;
+    float d = s * cur_dist;
+    //d = abs(d);
+    d = d * 0.5 + 0.5;
+    d = s;
+    out_c = vec4(d, d, d, 1);
+    //out_c = vec4(in_t.xy, 0, 1);
+} 
