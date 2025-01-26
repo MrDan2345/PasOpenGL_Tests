@@ -7,7 +7,7 @@ interface
 
 uses
   Classes, SysUtils, Forms, Controls, Graphics, Dialogs, ExtCtrls, PasOpenGL,
-  CommonUtils, MediaUtils, Setup, Math;
+  Math, CommonUtils, MediaUtils, Setup;
 
 type TGLuintArray = array of TGLuint;
 type TLoadingContext = class;
@@ -250,6 +250,7 @@ end;
 type TAnimationBlendShared = specialize TUSharedRef<TAnimationBlend>;
 
 type TUniformGroup = record
+  W: TGLint;
   WVP: TGLint;
   Bone: TGLint;
   MatAmbientColor: TGLint;
@@ -450,6 +451,8 @@ class function TShader.AutoShader(
   var Attrib: TUVertexAttribute;
   var vs, ps, Inputs, Outputs, AttName, AttSize, AttType: String;
   var i, BoneCount, AttribIndex: Int32;
+  var PositionId, TexCoordId, NormalId, TangentId, BinormalId: Int32;
+  var PositionName, TexCoordName, NormalName, TangentName, BinormalName: String;
 begin
   Hash := MakeHash;
   Result := _ShaderMap.FindValueByKey(Hash);
@@ -457,6 +460,11 @@ begin
   vs := '#version 450 core'#$D#$A;
   Inputs := '';
   Outputs := '';
+  PositionId := -1;
+  TexCoordId := -1;
+  NormalId := -1;
+  TangentId := -1;
+  BinormalId := -1;
   AttribIndex := 0;
   for Attrib in VertexDescriptor do
   begin
@@ -464,9 +472,36 @@ begin
     AttSize := IntToStr(Attrib.DataCount);
     if Attrib.DataCount = 1 then AttType := 'float' else AttType := 'vec' + AttSize;
     Inputs += 'layout (location = ' + IntToStr(AttribIndex) + ') in ' + AttType + ' in_' + AttName + ';'#$D#$A;
-    if Attrib.Semantic <> as_position then
+    Outputs += 'layout (location = ' + IntToStr(AttribIndex) + ') out ' + AttType + ' out_' + AttName + ';'#$D#$A;
+    if (PositionId = -1)
+    and (Attrib.Semantic = as_position) then
     begin
-      Outputs += 'layout (location = ' + IntToStr(AttribIndex) + ') out ' + AttType + ' out_' + AttName + ';'#$D#$A;
+      PositionId := AttribIndex;
+      PositionName := AttName;
+    end
+    else if (TexCoordId = -1)
+    and (Attrib.Semantic = as_texcoord) then
+    begin
+      TexCoordId := AttribIndex;
+      TexCoordName := AttName;
+    end
+    else if (NormalId = -1)
+    and (Attrib.Semantic = as_normal) then
+    begin
+      NormalId := AttribIndex;
+      NormalName := AttName;
+    end
+    else if (TangentId = -1)
+    and (Attrib.Semantic = as_tangent) then
+    begin
+      TangentId := AttribIndex;
+      NormalName := AttName;
+    end
+    else if (BinormalId = -1)
+    and (Attrib.Semantic = as_binormal) then
+    begin
+      BinormalId := AttribIndex;
+      NormalName := AttName;
     end;
     Inc(AttribIndex);
   end;
@@ -481,6 +516,7 @@ begin
     Inc(AttribIndex);
   end;
   vs += Inputs + Outputs;
+  vs += 'uniform mat4x4 W;'#$D#$A;
   vs += 'uniform mat4x4 WVP;'#$D#$A;
   if Assigned(SkinInfo) then
   begin
@@ -515,6 +551,7 @@ begin
           vs += '  vec4 position = vec4(in_position, 1.0);'#$D#$A;
         end;
         vs += '  gl_Position = position * WVP;'#$D#$A;
+        vs += '  out_position = (position.xyz * mat4x3(W)).xyz;'#$D#$A;
       end;
       as_normal,
       as_tangent,
@@ -528,7 +565,7 @@ begin
         begin
           vs += '  vec3 ' + AttName + ' = in_' + AttName + ';'#$D#$A;
         end;
-        vs += '  out_' + AttName + ' = ' + AttName + ' * mat3x3(WVP);'#$D#$A;
+        vs += '  out_' + AttName + ' = normalize(' + AttName + ' * mat3x3(W));'#$D#$A;
       end;
       as_texcoord:
       begin
@@ -544,7 +581,6 @@ begin
   ps := '#version 450 core'#$D#$A;
   for i := 0 to High(VertexDescriptor) do
   begin
-    if VertexDescriptor[i].Semantic = as_position then Continue;
     AttName := AttributeName(VertexDescriptor[i]);
     AttSize := IntToStr(VertexDescriptor[i].DataCount);
     ps += 'layout (location = ' + IntToStr(i) + ') in vec' + AttSize + ' in_' + AttName + ';'#$D#$A;
@@ -570,43 +606,70 @@ begin
   begin
     ps += 'uniform sampler2D m_normal_tex;'#$D#$A;
   end;
-  ps += 'uniform vec4 m_ambient_col;'#$D#$A;
-  ps += 'uniform vec4 m_diffuse_col;'#$D#$A;
-  ps += 'uniform vec4 m_emissive_col;'#$D#$A;
+  ps += 'uniform vec4 m_ambient_col = vec4(0.1, 0.1, 0.1, 1);'#$D#$A;
+  ps += 'uniform vec4 m_diffuse_col = vec4(1, 1, 1, 1);'#$D#$A;
+  ps += 'uniform vec4 m_emissive_col = vec4(0, 0, 0, 1);'#$D#$A;
   if not Material.SpecularTexture.IsValid then
   begin
-    ps += 'uniform vec4 m_specular_col;'#$D#$A;
+    ps += 'uniform vec4 m_specular_col = vec4(1, 1, 1, 0.5);'#$D#$A;
   end;
-  ps += 'uniform vec3 light_dir;'#$D#$A;
-  ps += 'uniform vec3 light_col;'#$D#$A;
+  ps += 'uniform vec3 light_dir = vec3(0, 1, 0);'#$D#$A;
+  ps += 'uniform vec3 light_diffuse = vec3(1, 1, 1);'#$D#$A;
+  ps += 'uniform vec3 light_ambient = vec3(0.1, 0.1, 0.1);'#$D#$A;
+  ps += 'uniform vec3 light_specular = vec3(1, 1, 1);'#$D#$A;
   ps += 'void main() {'#$D#$A;
-  ps += '  vec4 diffuse = m_diffuse_col;'#$D#$A;
-  if Material.DiffuseTexture.IsValid then
+  ps += '  vec4 m_diffuse = m_diffuse_col;'#$D#$A;
+  if Material.DiffuseTexture.IsValid
+  and (TexCoordId > -1) then
   begin
-    ps += '  diffuse *= texture(m_diffuse_tex, in_texcoord0.xy);'#$D#$A;
+    ps += '  m_diffuse *= texture(m_diffuse_tex, in_' + TexCoordName + '.xy);'#$D#$A;
   end;
-  ps += '  vec4 ambient = m_ambient_col;'#$D#$A;
-  if Material.AmbientTexture.IsValid then
+  ps += '  vec4 m_ambient = m_ambient_col;'#$D#$A;
+  if Material.AmbientTexture.IsValid
+  and (TexCoordId > -1) then
   begin
-    ps += '  ambient += texture(m_ambient_tex, in_texcoord0.xy);'#$D#$A;
+    ps += '  m_ambient += texture(m_ambient_tex, in_' + TexCoordName + '.xy);'#$D#$A;
   end;
-  ps += '  vec4 emissive = m_emissive_col;'#$D#$A;
-  if Material.AmbientTexture.IsValid then
+  ps += '  vec4 m_emissive = m_emissive_col;'#$D#$A;
+  if Material.AmbientTexture.IsValid
+  and (TexCoordId > -1) then
   begin
-    ps += '  emissive += texture(m_emissive_tex, in_texcoord0.xy);'#$D#$A;
+    ps += '  m_emissive += texture(m_emissive_tex, in_' + TexCoordName + '.xy);'#$D#$A;
   end;
-  if Material.SpecularTexture.IsValid then
+  if Material.SpecularTexture.IsValid
+  and (TexCoordId > -1) then
   begin
-    ps += '  vec4 specular = texture(m_specular_tex, in_texcoord0.xy);'#$D#$A;
+    ps += '  vec4 m_specular = texture(m_specular_tex, in_' + TexCoordName + '.xy);'#$D#$A;
   end
   else
   begin
-    ps += '  vec4 specular = m_specular_col;'#$D#$A;
+    ps += '  vec4 m_specular = m_specular_col;'#$D#$A;
   end;
-  ps += '  out_color = diffuse;'#$D#$A;
+  if NormalId > -1 then
+  begin
+    if (TangentId > -1)
+    and (BinormalId > -1)
+    and Material.NormalTexture.IsValid then
+    begin
+      ps += '  mat3x3 T = mat3x3(in_tangent.xyz, in_binormal.xyz, in_normal.xyz);'#$D#$A;
+      ps += '  vec3 normal = texture(m_normal_tex, in_' + TexCoordName + '.xy).xyz;'#$D#$A;
+      ps += '  normal = normalize((normal * 2.0 - 1.0) * T);'#$D#$A;
+    end
+    else
+    begin
+      ps += '  vec3 normal = in_normal;'#$D#$A;
+    end;
+    ps += '  float light = dot(normal, light_dir);'#$D#$A;
+    ps += '  out_color = vec4(light, light, light, 1);'#$D#$A;
+    //ps += '  out_color = vec4(in_binormal, 1);'#$D#$A;
+  end
+  else
+  begin
+    ps += '  out_color = m_diffuse;'#$D#$A;
+  end;
   ps += '}'#$D#$A;
-  UStrToFile('vs_' + IntToStr(Hash) + '.txt', vs);
-  UStrToFile('ps_' + IntToStr(Hash) + '.txt', ps);
+  UStrToFile('vs_' + IntToHex(Hash) + '.txt', vs);
+  UStrToFile('ps_' + IntToHex(Hash) + '.txt', ps);
   Result := TShader.Create(vs, ps);
   _ShaderMap.Add(Hash, Result);
 end;
@@ -885,7 +948,8 @@ begin
       end;
     end
     else if (ParamName = 'displacement')
-    or (ParamName = 'normal')then
+    or (ParamName = 'normal')
+    or (ParamName = 'bump') then
     begin
       if Param is TUSceneData.TMaterialInterface.TParamImage then
       begin
@@ -1177,6 +1241,7 @@ end;
 
 procedure TUniformGroup.Setup(const Shader: TShader);
 begin
+  W := Shader.UniformLocation('W');
   WVP := Shader.UniformLocation('WVP');
   Bone := Shader.UniformLocation('Bone');
   MatAmbientColor := Shader.UniformLocation('m_ambient_col');
@@ -1694,6 +1759,9 @@ begin
   //TaskLoad := TaskLoad.StartTask(@TF_Load, [AssetsFile('Vampire A Lusth/Vampire A Lusth.dae')]);
   //TaskLoad := TaskLoad.StartTask(@TF_Load, [AssetsFile('X Bot.dae')]);
   //first file provides the scene, additional files add animations (must be compatible with the scene)
+  //TaskLoad := TaskLoad.StartTask(@TF_Load, [AssetsFile('box.dae')]);
+  TaskLoad := TaskLoad.StartTask(@TF_Load, [AssetsFile('plane.dae')]);
+  {
   TaskLoad := TaskLoad.StartTask(@TF_Load, [
     //AssetsFile('Vampire A Lusth/Vampire A Lusth.dae'),
     AssetsFile('Vanguard By T. Choonyung/Vanguard By T. Choonyung.dae'),
@@ -1717,6 +1785,7 @@ begin
     AssetsFile('Shuffling Anim.dae'),
     AssetsFile('Snake Hip Hop Dance Anim.dae')
   ]);
+  //}
   Caption := 'PasOpenGL Loading...';
 end;
 
@@ -1725,6 +1794,7 @@ begin
 end;
 
 procedure TForm1.Tick;
+  var W, V, P, WVP: TUMat;
   procedure SetupUniforms(
     const Material: TMaterial;
     const UniformGroup: TUniformGroup
@@ -1747,6 +1817,8 @@ procedure TForm1.Tick;
     end;
   begin
     CurTexture := 0;
+    glUniformMatrix4fv(UniformGroup.W, 1, GL_TRUE, @W);
+    glUniformMatrix4fv(UniformGroup.WVP, 1, GL_TRUE, @WVP);
     SetColor(UniformGroup.MatAmbientColor, Material.AmbientColor);
     SetTexture(UniformGroup.MatAmbientTexture, Material.AmbientTexture);
     SetColor(UniformGroup.MatDiffuseColor, Material.DiffuseColor);
@@ -1757,7 +1829,6 @@ procedure TForm1.Tick;
     SetTexture(UniformGroup.MatSpecularTexture, Material.SpecularTexture);
     SetTexture(UniformGroup.MatNormalTexture, Material.NormalTexture);
   end;
-  var W, V, P, WVP: TUMat;
   procedure DrawNode(const Node: TNode);
     var Attach: TNode.TAttachment;
     var AttachMesh: TNode.TAttachmentMesh;
@@ -1784,7 +1855,6 @@ procedure TForm1.Tick;
         NewBuffer := AttachMesh.VertexArrays[i];
         glBindVertexArray(NewBuffer);
         SetupUniforms(Material, UniformGroup);
-        glUniformMatrix4fv(UniformGroup.WVP, 1, GL_TRUE, @WVP);
         AttachMesh.Mesh.DrawSubset(i);
       end;
     end
@@ -1803,7 +1873,6 @@ procedure TForm1.Tick;
         NewBuffer := AttachSkin.VertexArrays[i];
         glBindVertexArray(NewBuffer);
         SetupUniforms(Material, UniformGroup);
-        glUniformMatrix4fv(UniformGroup.WVP, 1, GL_TRUE, @WVP);
         glUniformMatrix4fv(UniformGroup.Bone, Length(AttachSkin.Pose), GL_TRUE, @AttachSkin.Pose[0]);
         AttachSkin.Skin.Mesh.DrawSubset(i);
       end;
@@ -1817,9 +1886,12 @@ procedure TForm1.Tick;
   var i: Int32;
 begin
   W := TUMat.Identity;
-  W := TUMat.Scaling(0.05);
+  W := TUMat.RotationX(UHalfPi * 0.5);
+  //W := TUMat.Scaling(0.05);
   W := W * TUMat.RotationY(((GetTickCount64 mod 6000) / 6000) * UTwoPi);
-  v := TUMat.View(TUVec3.Make(10, 10, 10), TUVec3.Make(0, 5, 0), TUVec3.Make(0, 1, 0));
+  //V := TUMat.View([10, 10, 10], [0, 5, 0], [0, 1, 0]);
+  //V := TUMat.View([0, 5, -10], [0, 5, 0], [0, 1, 0]);
+  V := TUMat.View([0, 5, -10], [0, 0, 0], [0, 1, 0]);
   P := TUMat.Proj(UPi * 0.3, ClientWidth / ClientHeight, 0.1, 100);
   WVP := W * V * P;
 

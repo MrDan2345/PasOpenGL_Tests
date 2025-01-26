@@ -15,10 +15,9 @@ private
   var VertexShader: TGLuint;
   var PixelShader: TGLuint;
   var Shader: TGLuint;
-  var UniformLines: TGLint;
-  var UniformLineCount: TGLint;
-  var UniformCurves: TGLint;
-  var UniformCurveCount: TGLint;
+  var UniformPoints: TGLint;
+  var UniformContours: TGLint;
+  var UniformContourCount: TGLint;
   var MyFont: TUTrueTypeFontShared;
 protected
   function RequestDebugContext: Boolean; override;
@@ -81,10 +80,9 @@ begin
   end;
   glDeleteShader(PixelShader);
   glDeleteShader(VertexShader);
-  UniformLines := glGetUniformLocation(Shader, PGLchar(PAnsiChar('lines')));
-  UniformLineCount := glGetUniformLocation(Shader, PGLchar(PAnsiChar('line_count')));
-  UniformCurves := glGetUniformLocation(Shader, PGLchar(PAnsiChar('curves')));
-  UniformCurveCount := glGetUniformLocation(Shader, PGLchar(PAnsiChar('curve_count')));
+  UniformPoints := glGetUniformLocation(Shader, PGLchar(PAnsiChar('points')));
+  UniformContours := glGetUniformLocation(Shader, PGLchar(PAnsiChar('contours')));
+  UniformContourCount := glGetUniformLocation(Shader, PGLchar(PAnsiChar('contour_count')));
   //UniformWVP := glGetUniformLocation(Shader, PGLchar(PAnsiChar('WVP')));
   //UniformTex0 := glGetUniformLocation(Shader, PGLchar(PAnsiChar('tex0')));
 end;
@@ -96,30 +94,14 @@ begin
 end;
 
 procedure TForm1.Tick;
-  const Bias = 0.0001;
-  var Lines: TUVec2Array;
-  procedure AddLine(const v0, v1: TUVec2);
-    var i: Int32;
-    var n: TUVec2;
+  var Points: TUVec2Array;
+  procedure AddPoint(const v: TUVec2);
   begin
-    i := Length(Lines);
-    SetLength(Lines, i + 2);
-    n := (v1 - v0).Norm * Bias;
-    Lines[i] := v0 + n;
-    Lines[i + 1] := v1 - n;
+    specialize UArrAppend<TUVec2>(Points, v);
   end;
-  var Curves: TUVec2Array;
-  procedure AddCurve(const v0, v1, v2: TUVec2);
-    var i: Int32;
-  begin
-    i := Length(Curves);
-    SetLength(Curves, i + 3);
-    Curves[i] := UBezier(v0, v1, v2, Bias);
-    Curves[i + 1] := v1;
-    Curves[i + 2] := UBezier(v0, v1, v2, 1 - Bias);
-  end;
+  var Contours: TUVec2iArray;
   var W, V, P, WVP: TUMat;
-  var i, j, n: Int32;
+  var i, j, n, c: Int32;
   var GlyphId: UInt32;
   var Glyph: TUTrueTypeFont.TGlyph;
   var p0, p1, p2: TUVec2;
@@ -132,9 +114,9 @@ begin
   WVP := W * V * P;
   //}
 
-  GlyphId := MyFont.Ptr.FindGlyph(UStrUTF8ToUTF32('Ж', i));
+  GlyphId := MyFont.Ptr.FindGlyph(3675);//UStrUTF8ToUTF32('Ж', i));
   Glyph := MyFont.Ptr.Glyphs[GlyphId];
-  for i := 0 to High(Glyph.Contours) do
+  {for i := 0 to High(Glyph.Contours) do
   begin
     for j := 0 to High(Glyph.Contours[i]) do
     begin
@@ -151,7 +133,38 @@ begin
       p2 := (Glyph.Contours[i][n].Pos - Glyph.Bounds.Min) / Glyph.Bounds.Size;
       AddCurve(p0, p1, p2);
     end;
+  end;}
+
+  Contours := nil;
+  for i := 0 to High(Glyph.Contours) do
+  begin
+    if Length(Glyph.Contours[i]) = 0 then Continue;
+    SetLength(Contours, Length(Contours) + 1);
+    Contours[High(Contours)][0] := Length(Points);
+    c := 0;
+    for j := 0 to High(Glyph.Contours[i]) do
+    begin
+      n := j mod Length(Glyph.Contours[i]);
+      if not Glyph.Contours[i][n].OnCurve then Continue;
+      Inc(c);
+      p0 := (Glyph.Contours[i][n].Pos - Glyph.Bounds.Min) / Glyph.Bounds.Size;
+      AddPoint(p0);
+      n := (j + 1) mod Length(Glyph.Contours[i]);
+      p1 := (Glyph.Contours[i][n].Pos - Glyph.Bounds.Min) / Glyph.Bounds.Size;
+      if Glyph.Contours[i][n].OnCurve then
+      begin
+        AddPoint((p0 + p1) * 0.5);
+      end
+      else
+      begin
+        AddPoint(p1);
+      end;
+    end;
+    p0 := (Glyph.Contours[i][0].Pos - Glyph.Bounds.Min) / Glyph.Bounds.Size;
+    AddPoint(p0);
+    Contours[High(Contours)][1] := c;
   end;
+
   //SetLength(Points, 2);
   //Points[0] := [0.1, 0.5];
   //Points[1] := [0.9, 0.5];
@@ -166,10 +179,9 @@ begin
   glBindVertexArray(VertexArray);
   glUseProgram(Shader);
 
-  glUniform2fv(UniformLines, Length(Lines), @Lines[0]);
-  glUniform1i(UniformLineCount, Length(Lines));
-  glUniform2fv(UniformCurves, Length(Curves), @Curves[0]);
-  glUniform1i(UniformCurveCount, Length(Curves));
+  glUniform2fv(UniformPoints, Length(Points), @Points[0]);
+  glUniform2iv(UniformContours, Length(Contours), @Contours[0]);
+  glUniform1i(UniformContourCount, Length(Contours));
 
   glDrawArrays(GL_TRIANGLES, 0, 6);
 end;
