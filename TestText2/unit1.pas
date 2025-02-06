@@ -106,7 +106,7 @@ procedure TForm1.Tick;
   var Glyph: TUTrueTypeFont.TGlyph;
   var i, n: Int32;
   var Pos: TUVec2;
-  const Str = 'Ййёj๛!มกำล๛Ж';
+  const Str = 'йёj๛!มกำล๛Ж';
 begin
   glViewport(0, 0, ClientWidth, ClientHeight);
   glClearColor(0.4, 1, 0.8, 1);
