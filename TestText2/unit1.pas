@@ -106,12 +106,13 @@ procedure TForm1.Tick;
   var Glyph: TUTrueTypeFont.TGlyph;
   var i, n: Int32;
   var Pos: TUVec2;
-  const Str = 'Ж';//'!มกำล';
+  const Str = 'Ййёj๛!มกำล๛Ж';
 begin
   glViewport(0, 0, ClientWidth, ClientHeight);
   glClearColor(0.4, 1, 0.8, 1);
   glClear(GL_COLOR_BUFFER_BIT);
 
+  //WriteLn(UStrUTF32ToUTF8(3675));
   GlyphId := MyFont.Ptr.FindGlyph(3675);
   Pos := TUVec2.Make(0, 0);
   i := 1;
@@ -150,7 +151,7 @@ procedure TForm1.DrawGlyph(const Glyph: TUTrueTypeFont.TGlyph; const Pos: TUVec2
   var Scale: TUFloat;
   const Area = 1 / 1;
 begin
-  GlyphSize := UMax(Glyph.Bounds.Size.x, Glyph.Bounds.Size.y);
+  GlyphSize := MyFont.Ptr.LineHeight;
   Scale := 1.9 * Area;
   Contours := nil;
   for i := 0 to High(Glyph.Contours) do
