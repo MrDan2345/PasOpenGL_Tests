@@ -250,6 +250,7 @@ end;
 type TAnimationBlendShared = specialize TUSharedRef<TAnimationBlend>;
 
 type TUniformGroup = record
+  ViewPos: TGLint;
   W: TGLint;
   WVP: TGLint;
   Bone: TGLint;
@@ -606,7 +607,7 @@ begin
   begin
     ps += 'uniform sampler2D m_normal_tex;'#$D#$A;
   end;
-  ps += 'uniform vec4 m_ambient_col = vec4(0.1, 0.1, 0.1, 1);'#$D#$A;
+  ps += 'uniform vec4 m_ambient_col = vec4(1, 1, 1, 1);'#$D#$A;
   ps += 'uniform vec4 m_diffuse_col = vec4(1, 1, 1, 1);'#$D#$A;
   ps += 'uniform vec4 m_emissive_col = vec4(0, 0, 0, 1);'#$D#$A;
   if not Material.SpecularTexture.IsValid then
@@ -615,8 +616,9 @@ begin
   end;
   ps += 'uniform vec3 light_dir = vec3(0, 1, 0);'#$D#$A;
   ps += 'uniform vec3 light_diffuse = vec3(1, 1, 1);'#$D#$A;
-  ps += 'uniform vec3 light_ambient = vec3(0.1, 0.1, 0.1);'#$D#$A;
+  ps += 'uniform vec3 light_ambient = vec3(0.5, 0.5, 0.5);'#$D#$A;
   ps += 'uniform vec3 light_specular = vec3(1, 1, 1);'#$D#$A;
+  ps += 'uniform vec3 view_pos;'#$D#$A;
   ps += 'void main() {'#$D#$A;
   ps += '  vec4 m_diffuse = m_diffuse_col;'#$D#$A;
   if Material.DiffuseTexture.IsValid
@@ -659,8 +661,13 @@ begin
     begin
       ps += '  vec3 normal = in_normal;'#$D#$A;
     end;
-    ps += '  float light = dot(normal, light_dir);'#$D#$A;
-    ps += '  out_color = vec4(light, light, light, 1);'#$D#$A;
+    ps += '  vec3 view_dir = normalize(view_pos - in_position);'#$D#$A;
+    ps += '  vec3 ref_dir = normalize(reflect(-light_dir, normal));'#$D#$A;
+    ps += '  vec3 light_s = pow(max(dot(normal, ref_dir), 0.0), 5.0) * light_specular;'#$D#$A;
+    ps += '  vec3 light_d = max(dot(normal, light_dir) * 0.5 + 0.5, 0.0) * light_diffuse;'#$D#$A;
+    ps += '  light_d += m_ambient.xyz * light_ambient.xyz;'#$D#$A;
+    ps += '  vec3 color = m_diffuse.xyz * light_d + m_specular.xyz * light_s + m_emissive.xyz;'#$D#$A;
+    ps += '  out_color = vec4(color, m_diffuse.w);'#$D#$A;
     //ps += '  out_color = vec4(in_binormal, 1);'#$D#$A;
   end
   else
@@ -1241,6 +1248,7 @@ end;
 
 procedure TUniformGroup.Setup(const Shader: TShader);
 begin
+  ViewPos := Shader.UniformLocation('view_pos');
   W := Shader.UniformLocation('W');
   WVP := Shader.UniformLocation('WVP');
   Bone := Shader.UniformLocation('Bone');
@@ -1703,7 +1711,7 @@ begin
       Continue;
     end;
     Context := TLoadingContext.Create(FileName);
-    Data := TUSceneDataDAE.Create([sdo_optimize, sdo_gen_tangents], sdu_y);
+    Data := TUSceneDataDAE.Create([sdo_optimize], sdu_y);
     Scene := TScene.Create;
     try
       Data.Load(FileName);
@@ -1760,8 +1768,8 @@ begin
   //TaskLoad := TaskLoad.StartTask(@TF_Load, [AssetsFile('X Bot.dae')]);
   //first file provides the scene, additional files add animations (must be compatible with the scene)
   //TaskLoad := TaskLoad.StartTask(@TF_Load, [AssetsFile('box.dae')]);
-  TaskLoad := TaskLoad.StartTask(@TF_Load, [AssetsFile('plane.dae')]);
-  {
+  //TaskLoad := TaskLoad.StartTask(@TF_Load, [AssetsFile('plane.dae')]);
+  //{
   TaskLoad := TaskLoad.StartTask(@TF_Load, [
     //AssetsFile('Vampire A Lusth/Vampire A Lusth.dae'),
     AssetsFile('Vanguard By T. Choonyung/Vanguard By T. Choonyung.dae'),
@@ -1795,6 +1803,7 @@ end;
 
 procedure TForm1.Tick;
   var W, V, P, WVP: TUMat;
+  var ViewPos: TUVec3;
   procedure SetupUniforms(
     const Material: TMaterial;
     const UniformGroup: TUniformGroup
@@ -1817,6 +1826,7 @@ procedure TForm1.Tick;
     end;
   begin
     CurTexture := 0;
+    glUniform3fv(UniformGroup.ViewPos, 1, @ViewPos);
     glUniformMatrix4fv(UniformGroup.W, 1, GL_TRUE, @W);
     glUniformMatrix4fv(UniformGroup.WVP, 1, GL_TRUE, @WVP);
     SetColor(UniformGroup.MatAmbientColor, Material.AmbientColor);
@@ -1886,12 +1896,13 @@ procedure TForm1.Tick;
   var i: Int32;
 begin
   W := TUMat.Identity;
-  W := TUMat.RotationX(UHalfPi * 0.5);
-  //W := TUMat.Scaling(0.05);
+  //W := TUMat.RotationX(UHalfPi * 0.5);
+  W := TUMat.Scaling(0.05);
   W := W * TUMat.RotationY(((GetTickCount64 mod 6000) / 6000) * UTwoPi);
+  ViewPos := [0, 5, 0];
   //V := TUMat.View([10, 10, 10], [0, 5, 0], [0, 1, 0]);
-  //V := TUMat.View([0, 5, -10], [0, 5, 0], [0, 1, 0]);
-  V := TUMat.View([0, 5, -10], [0, 0, 0], [0, 1, 0]);
+  V := TUMat.View([0, 5, -10], ViewPos, [0, 1, 0]);
+  //V := TUMat.View([0, 5, -10], [0, 0, 0], [0, 1, 0]);
   P := TUMat.Proj(UPi * 0.3, ClientWidth / ClientHeight, 0.1, 100);
   WVP := W * V * P;
 
