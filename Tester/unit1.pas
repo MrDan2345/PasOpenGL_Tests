@@ -6,8 +6,16 @@ unit Unit1;
 interface
 
 uses
-  Classes, SysUtils, Forms, Controls, Graphics, Dialogs, ExtCtrls, PasOpenGL,
-  CommonUtils, MediaUtils, Setup;
+  Classes,
+  SysUtils,
+  Forms,
+  Controls,
+  Graphics,
+  Dialogs,
+  ExtCtrls,
+  PasOpenGL,
+  CommonUtils,
+  Setup;
 
 type TForm1 = class(TCommonForm)
 private
