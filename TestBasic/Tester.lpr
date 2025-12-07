@@ -20,6 +20,8 @@ uses
 
 {$R *.res}
 
+{$define USE_DSA}
+
 type TVertex = packed record
   Pos: TUVec3;
   Color: TUVec4;
@@ -40,20 +42,20 @@ procedure Initialize;
     0, 1, 2, 2, 1, 3
   );
 begin
-  //{
+{$if defined(USE_DSA)}
   glCreateBuffers(1, @VB);
   glNamedBufferStorage(VB, SizeOf(Vertices), @Vertices, 0);
   glCreateBuffers(1, @IB);
   glNamedBufferStorage(IB, SizeOf(Indices), @Indices, 0);
-  //}
-  { pre DSA
+{$else}
+  //pre DSA
   glGenBuffers(1, @VB);
   glBindBuffer(GL_ARRAY_BUFFER, VB);
   glBufferData(GL_ARRAY_BUFFER, Sizeof(TVertex) * 4, @Vertices, GL_STATIC_DRAW);
   glGenBuffers(1, @IB);
   glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, IB);
   glBufferData(GL_ELEMENT_ARRAY_BUFFER, SizeOf(Word) * 6, @Indices, GL_STATIC_DRAW);
-  //}
+{$endif}
 end;
 
 procedure Finalize;
@@ -336,7 +338,7 @@ begin
     FBConfig := Config^;
     VisualInfo := glXGetVisualFromFBConfig(Display, FBConfig);
     {
-    it is possible to acquire a compatible visual info from glXChooseVisual
+    it is possible to acquire a compatible visual info from glXChooseVisual.
     every component size must match the visual from FB config.
     it may be useful when creating context independent of window
     VisualAttribs := [
@@ -395,6 +397,7 @@ begin
     ContextAttribs[GLX_CONTEXT_MAJOR_VERSION_ARB] := 3;
     ContextAttribs[GLX_CONTEXT_MINOR_VERSION_ARB] := 0;
     //ContextAttribs[GLX_CONTEXT_FLAGS_ARB] := GLX_CONTEXT_FORWARD_COMPATIBLE_BIT_ARB;
+    //ContextAttribs[GLX_CONTEXT_FLAGS_ARB] := GLX_CONTEXT_COMPATIBILITY_PROFILE_BIT_ARB;
     Context := glXCreateContextAttribsARB(Display, FBConfig, nil, GL_TRUE, ContextAttribs.Data);
   end
   else
