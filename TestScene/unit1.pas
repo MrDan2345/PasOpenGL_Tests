@@ -1900,8 +1900,8 @@ begin
   W := TUMat.Scaling(0.05);
   W := W * TUMat.RotationY(((GetTickCount64 mod 6000) / 6000) * UTwoPi);
   ViewPos := [0, 5, 0];
-  //V := TUMat.View([10, 10, 10], [0, 5, 0], [0, 1, 0]);
-  V := TUMat.View([0, 5, -10], ViewPos, [0, 1, 0]);
+  V := TUMat.View([10, 10, 10], ViewPos, [0, 1, 0]);
+  //V := TUMat.View([0, 5, -10], ViewPos, [0, 1, 0]);
   //V := TUMat.View([0, 5, -10], [0, 0, 0], [0, 1, 0]);
   P := TUMat.Proj(UPi * 0.3, ClientWidth / ClientHeight, 0.1, 100);
   WVP := W * V * P;

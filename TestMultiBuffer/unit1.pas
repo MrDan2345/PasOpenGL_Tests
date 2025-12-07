@@ -9,6 +9,8 @@ uses
   Classes, SysUtils, Forms, Controls, Graphics, Dialogs, ExtCtrls, PasOpenGL,
   CommonUtils, MediaUtils, Setup;
 
+{$define USE_DSA}
+
 type TForm1 = class(TCommonForm)
 private
   var VertexArray: TGLuint;
@@ -140,7 +142,7 @@ procedure TForm1.Initialize;
   var i: Integer;
   var ErrorBuffer: array[0..511] of AnsiChar;
 begin
-  //{ DSA
+{$if defined(USE_DSA)}
   GenerateBuffers;
   glCreateVertexArrays(1, @VertexArray);
   glCreateBuffers(Length(VertexBuffer), @VertexBuffer);
@@ -157,8 +159,7 @@ begin
   glEnableVertexArrayAttrib(VertexArray, 1);
   glVertexArrayAttribFormat(VertexArray, 1, 4, GL_FLOAT, GL_FALSE, 0);
   glVertexArrayAttribBinding(VertexArray, 1, 1);
-  //}
-  { pre DSA
+{$else}//pre DSA
   glGenVertexArrays(1, @VertexArray);
   glGenBuffers(Length(VertexBuffer), @VertexBuffer);
   glGenBuffers(1, @IndexBuffer);
@@ -173,7 +174,7 @@ begin
   glEnableVertexAttribArray(1);
   glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, IndexBuffer);
   glBufferData(GL_ELEMENT_ARRAY_BUFFER, SizeOf(UInt32) * Length(Indices), @Indices[0], GL_STATIC_DRAW);
-  //}
+{$endif}
   VertexShader := glCreateShader(GL_VERTEX_SHADER);
   ShaderSource := UFileToStr(LocalFile('shader_vs.txt'));
   Ptr := PAnsiChar(ShaderSource);
