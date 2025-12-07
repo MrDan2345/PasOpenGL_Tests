@@ -663,7 +663,7 @@ begin
     end;
     ps += '  vec3 view_dir = normalize(view_pos - in_position);'#$D#$A;
     ps += '  vec3 ref_dir = normalize(reflect(-light_dir, normal));'#$D#$A;
-    ps += '  vec3 light_s = pow(max(dot(normal, ref_dir), 0.0), 5.0) * light_specular;'#$D#$A;
+    ps += '  vec3 light_s = pow(max(dot(normal, ref_dir), 0.0), 4.0) * light_specular;'#$D#$A;
     ps += '  vec3 light_d = max(dot(normal, light_dir) * 0.5 + 0.5, 0.0) * light_diffuse;'#$D#$A;
     ps += '  light_d += m_ambient.xyz * light_ambient.xyz;'#$D#$A;
     ps += '  vec3 color = m_diffuse.xyz * light_d + m_specular.xyz * light_s + m_emissive.xyz;'#$D#$A;
